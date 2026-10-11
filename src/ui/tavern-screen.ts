@@ -11,6 +11,7 @@ interface Settings {
   size: TavernSize;
   grid: boolean;
   labels: boolean;
+  lighting: boolean;
 }
 
 function randomSeed(): string {
@@ -18,7 +19,7 @@ function randomSeed(): string {
 }
 
 function loadSettings(): Settings {
-  const fresh: Settings = { seed: randomSeed(), size: 'medium', grid: true, labels: true };
+  const fresh: Settings = { seed: randomSeed(), size: 'medium', grid: true, labels: true, lighting: true };
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Partial<Settings> | null;
     if (!saved || typeof saved !== 'object') return fresh;
@@ -27,6 +28,7 @@ function loadSettings(): Settings {
       size: TAVERN_SIZES.includes(saved.size as TavernSize) ? (saved.size as TavernSize) : fresh.size,
       grid: typeof saved.grid === 'boolean' ? saved.grid : fresh.grid,
       labels: typeof saved.labels === 'boolean' ? saved.labels : fresh.labels,
+      lighting: typeof saved.lighting === 'boolean' ? saved.lighting : fresh.lighting,
     };
   } catch {
     // Storage blocked or holding something else: start with a new tavern.
@@ -49,12 +51,18 @@ export function initTavernScreen(root: HTMLElement): void {
   const refresh = () => {
     // An emptied seed field still has to give a tavern; it gets a new seed when left.
     const tavern = generateTavern(settings.seed || 'taverna', settings.size);
-    renderTavern(canvas, tavern, { squarePx: SQUARE_PX, grid: settings.grid, labels: settings.labels });
+    renderTavern(canvas, tavern, {
+      squarePx: SQUARE_PX,
+      grid: settings.grid,
+      labels: settings.labels,
+      lighting: settings.lighting,
+    });
     for (const button of sizeButtons) {
       button.classList.toggle('active', button.dataset.tavernSize === settings.size);
     }
     find('#tavern-grid').classList.toggle('active', settings.grid);
     find('#tavern-labels').classList.toggle('active', settings.labels);
+    find('#tavern-lighting').classList.toggle('active', settings.lighting);
     // Interior size, without the ground around the building.
     const squares = `${tavern.w - 2}×${tavern.h - 2}`;
     status.textContent = `${tavern.name} · ${squares} quadrados · seed "${tavern.seed}"`;
@@ -78,6 +86,10 @@ export function initTavernScreen(root: HTMLElement): void {
   });
   find('#tavern-labels').addEventListener('click', () => {
     settings.labels = !settings.labels;
+    refresh();
+  });
+  find('#tavern-lighting').addEventListener('click', () => {
+    settings.lighting = !settings.lighting;
     refresh();
   });
   seedInput.addEventListener('input', () => {
