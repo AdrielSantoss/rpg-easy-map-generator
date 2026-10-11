@@ -17,13 +17,13 @@ export const HINT_RADIUS = 30;
 /** How much (in cells) noise bends the edge of a hint, so areas don't come out as circles. */
 const EDGE_WOBBLE = 7;
 
-/** How close (in cells) a click must be to a hint's position to pick it. */
-const PICK_RADIUS = 7;
+/** Part of a hint's reach where its terrain clearly shows; a click there picks that hint. */
+export const HINT_CORE_RADIUS = HINT_RADIUS * 0.75;
 
-/** The hint whose marker is under the given cell position, if any. */
+/** The hint whose terrain covers the given cell position, if any (the nearest when several do). */
 export function hintAt(hints: readonly TerrainHint[], x: number, y: number): TerrainHint | null {
   let best: TerrainHint | null = null;
-  let bestDist = PICK_RADIUS;
+  let bestDist = HINT_CORE_RADIUS;
   for (const hint of hints) {
     const d = Math.hypot(hint.x - x, hint.y - y);
     if (d < bestDist) {

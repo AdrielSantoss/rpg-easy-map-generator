@@ -321,6 +321,25 @@ dialog p {
   background-size: 40px 40px;
 }
 
+/* Follows the cursor to show how much ground a terrain brush covers. */
+#brush {
+  position: absolute;
+  width: 7.5%;
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  border: 2px dashed;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+#brush[hidden] {
+  display: none;
+}
+
+#overlay.painting {
+  cursor: crosshair;
+}
+
 #overlay.placing {
   cursor: copy;
 }

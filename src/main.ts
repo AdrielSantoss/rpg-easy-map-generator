@@ -1,7 +1,7 @@
 import type { TerrainDistribution } from './generator/distribution.ts';
-import { hintAt, TERRAIN_KINDS, type TerrainHint, type TerrainKind } from './generator/hints.ts';
+import { HINT_RADIUS, hintAt, TERRAIN_KINDS, type TerrainHint, type TerrainKind } from './generator/hints.ts';
 import { generateMap, type MapData } from './generator/index.ts';
-import { drawHintMarkers } from './render/hints.ts';
+import { drawBrushTrail, TERRAIN_COLOR } from './render/hints.ts';
 import { renderMap } from './render/parchment.ts';
 import { drawStructures } from './render/structures.ts';
 import { structureAt, type Structure, type StructureKind } from './structures/model.ts';
@@ -20,6 +20,8 @@ const DETAIL_SCALE = 4;
 const SHARPEN_ABOVE = 1.25;
 /** Wait this long (ms) after the last zoom step before the slow sharp repaint. */
 const SHARPEN_DELAY = 300;
+/** While dragging a terrain brush, a new dab is laid down every this many cells. */
+const BRUSH_SPACING = HINT_RADIUS * 0.5;
 
 type MapTool = StructureKind | TerrainKind | 'remove' | null;
 
@@ -45,6 +47,8 @@ let hints: TerrainHint[] = [];
 /** Terrain shares the user asked for, in percent; null lets the climate decide. */
 let distribution: TerrainDistribution | null = null;
 let mapTool: MapTool = null;
+/** Terrain dabs of the brush drag in progress; they reach the map when the button is released. */
+let stroke: TerrainHint[] | null = null;
 /** Undo steps for things placed on the map, most recent last. */
 const undoStack: (() => void)[] = [];
 /** Pixels per cell the map and overlay canvases are currently painted at. */
@@ -54,6 +58,7 @@ let sharpenTimer = 0;
 overlay.width = GRID_W * VIEW_SCALE;
 overlay.height = GRID_H * VIEW_SCALE;
 
+const brush = $('brush');
 const zoomReset = $('zoom-reset');
 const zoom = new ZoomController($('stage'), $('viewport'), {
   canLeftDrag: () => document.body.dataset.mode === 'map' && mapTool === null,
@@ -85,12 +90,15 @@ function setMapTool(tool: MapTool): void {
   for (const button of paletteButtons) {
     button.classList.toggle('active', button.dataset.tool === tool);
   }
-  overlay.classList.toggle('placing', tool !== null && tool !== 'remove');
+  overlay.classList.toggle('painting', isTerrainKind(tool));
+  overlay.classList.toggle('placing', tool !== null && tool !== 'remove' && !isTerrainKind(tool));
+  brush.hidden = true;
   overlay.classList.toggle('removing', tool === 'remove');
   redrawOverlay();
 }
 
 function isLand(map: MapData, x: number, y: number): boolean {
+  if (x < 0 || y < 0 || x >= map.w || y >= map.h) return false;
   return map.field[Math.floor(y) * map.w + Math.floor(x)] > 0;
 }
 
@@ -98,8 +106,7 @@ function redrawOverlay(): void {
   const ctx = overlay.getContext('2d')!;
   ctx.clearRect(0, 0, overlay.width, overlay.height);
   drawStructures(ctx, structures, paintedScale);
-  // Terrain markers are an editing aid: shown only while they can be placed or removed.
-  if (isTerrainKind(mapTool) || mapTool === 'remove') drawHintMarkers(ctx, hints, paintedScale);
+  if (stroke) drawBrushTrail(ctx, stroke, paintedScale);
 }
 
 /** Paints the current map and everything on it at the given resolution. */
@@ -169,11 +176,15 @@ function generate(): Promise<void> {
   });
 }
 
-function onMapClick(e: PointerEvent): void {
-  if (!currentMap || !mapTool || e.button !== 0 || generateButton.disabled) return;
+/** Grid cell under the pointer. */
+function cellAt(e: PointerEvent): [number, number] {
   const rect = overlay.getBoundingClientRect();
-  const x = ((e.clientX - rect.left) / rect.width) * GRID_W;
-  const y = ((e.clientY - rect.top) / rect.height) * GRID_H;
+  return [((e.clientX - rect.left) / rect.width) * GRID_W, ((e.clientY - rect.top) / rect.height) * GRID_H];
+}
+
+function onMapPointerDown(e: PointerEvent): void {
+  if (!currentMap || !mapTool || e.button !== 0 || generateButton.disabled) return;
+  const [x, y] = cellAt(e);
   const structure = structureAt(structures, x, y);
 
   if (mapTool === 'remove') {
@@ -188,14 +199,9 @@ function onMapClick(e: PointerEvent): void {
   } else if (!isLand(currentMap, x, y)) {
     status.textContent = 'Clique em terra firme.';
   } else if (isTerrainKind(mapTool)) {
-    // The terrain changes, so the map is rebuilt with the same seed.
-    const hint: TerrainHint = { kind: mapTool, x, y };
-    hints.push(hint);
-    undoStack.push(() => {
-      hints = hints.filter((other) => other !== hint);
-      generate();
-    });
-    generate();
+    // Start a brush stroke; it is applied when the button is released.
+    overlay.setPointerCapture(e.pointerId);
+    stroke = [{ kind: mapTool, x, y }];
   } else if (structure) {
     // Clicking an existing structure renames it instead of stacking another on top.
     const name = prompt('Nome da estrutura:', structure.name)?.trim();
@@ -210,6 +216,35 @@ function onMapClick(e: PointerEvent): void {
   }
   redrawOverlay();
 }
+
+function onMapPointerMove(e: PointerEvent): void {
+  const [x, y] = cellAt(e);
+  if (isTerrainKind(mapTool)) {
+    brush.hidden = false;
+    brush.style.left = `${(x / GRID_W) * 100}%`;
+    brush.style.top = `${(y / GRID_H) * 100}%`;
+    brush.style.borderColor = TERRAIN_COLOR[mapTool];
+  }
+  if (!stroke || !currentMap) return;
+  const last = stroke[stroke.length - 1];
+  if (Math.hypot(x - last.x, y - last.y) < BRUSH_SPACING || !isLand(currentMap, x, y)) return;
+  stroke.push({ kind: last.kind, x, y });
+  redrawOverlay();
+}
+
+/** Applies the finished brush stroke: the map is rebuilt with the same seed. */
+function onMapPointerUp(): void {
+  if (!stroke) return;
+  const painted = stroke;
+  stroke = null;
+  hints.push(...painted);
+  undoStack.push(() => {
+    hints = hints.filter((hint) => !painted.includes(hint));
+    generate();
+  });
+  generate();
+}
+
 function exportPng(): void {
   if (!currentMap) return;
   const canvas = document.createElement('canvas');
@@ -266,7 +301,18 @@ for (const button of paletteButtons) {
     setMapTool(mapTool === tool ? null : tool);
   });
 }
-overlay.addEventListener('pointerdown', onMapClick);
+overlay.addEventListener('pointerdown', onMapPointerDown);
+overlay.addEventListener('pointermove', onMapPointerMove);
+overlay.addEventListener('pointerup', onMapPointerUp);
+overlay.addEventListener('pointercancel', onMapPointerUp);
+overlay.addEventListener('pointerleave', () => {
+  brush.hidden = true;
+});
+$('clear-hints').addEventListener('click', () => {
+  if (hints.length === 0) return;
+  hints = [];
+  generate();
+});
 document.addEventListener('keydown', (e) => {
   if (!(e.ctrlKey || e.metaKey) || e.key !== 'z' || e.target === seedInput) return;
   e.preventDefault();
@@ -281,7 +327,7 @@ document.addEventListener('keydown', (e) => {
 seedInput.value = randomSeed();
 
 // ?demo opens straight on a generated example map with a few structures on it;
-// ?demo&hints also drops some terrain hints and shows their markers, and
+// ?demo&hints also paints some terrain, and
 // ?demo&shares applies a custom terrain distribution.
 const params = new URLSearchParams(location.search);
 if (params.has('demo')) {
@@ -298,7 +344,6 @@ if (params.has('demo')) {
       { kind: 'tundra', x: 270, y: 110 },
       { kind: 'swamp', x: 340, y: 285 },
     ];
-    setMapTool('remove');
   }
   generate().then(() => {
     const samples: [StructureKind, number, number][] = [

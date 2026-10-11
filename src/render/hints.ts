@@ -1,4 +1,4 @@
-import { HINT_RADIUS, type TerrainHint, type TerrainKind } from '../generator/hints.ts';
+import { HINT_CORE_RADIUS, type TerrainHint, type TerrainKind } from '../generator/hints.ts';
 
 /** The color that stands for each terrain in the editing UI. */
 export const TERRAIN_COLOR: Record<TerrainKind, string> = {
@@ -10,36 +10,25 @@ export const TERRAIN_COLOR: Record<TerrainKind, string> = {
   plains: 'rgb(176, 198, 104)',
 };
 
-/** Marker radius in cells. */
-const HINT_MARKER_RADIUS = 5;
-
 /**
- * Editing aid, not part of the map: shows where each terrain hint sits and
- * roughly how far it reaches. `scale` is pixels per cell.
+ * Tints the ground a brush stroke has passed over while it is still being
+ * dragged, before the map is rebuilt. `scale` is pixels per cell.
  */
-export function drawHintMarkers(
+export function drawBrushTrail(
   ctx: CanvasRenderingContext2D,
-  hints: readonly TerrainHint[],
+  stroke: readonly TerrainHint[],
   scale: number,
 ): void {
   ctx.save();
   ctx.scale(scale, scale);
-  for (const hint of hints) {
-    ctx.strokeStyle = TERRAIN_COLOR[hint.kind];
-    ctx.lineWidth = 0.6;
-    ctx.setLineDash([2.5, 2.5]);
-    ctx.beginPath();
-    ctx.arc(hint.x, hint.y, HINT_RADIUS * 0.75, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.setLineDash([]);
-    ctx.beginPath();
-    ctx.arc(hint.x, hint.y, HINT_MARKER_RADIUS, 0, Math.PI * 2);
-    ctx.fillStyle = TERRAIN_COLOR[hint.kind];
-    ctx.fill();
-    ctx.strokeStyle = 'rgb(255, 250, 235)';
-    ctx.lineWidth = 0.9;
-    ctx.stroke();
+  // One path for the whole stroke, so overlapping dabs do not add up to a darker tint.
+  ctx.beginPath();
+  for (const dab of stroke) {
+    ctx.moveTo(dab.x + HINT_CORE_RADIUS, dab.y);
+    ctx.arc(dab.x, dab.y, HINT_CORE_RADIUS, 0, Math.PI * 2);
   }
+  ctx.globalAlpha = 0.45;
+  ctx.fillStyle = TERRAIN_COLOR[stroke[0].kind];
+  ctx.fill();
   ctx.restore();
 }

@@ -47,6 +47,10 @@ describe('hintAt', () => {
     expect(hintAt([forest, desert], 45, 40)).toBe(desert);
   });
 
+  it('picks a hint clicked anywhere on the area it covers', () => {
+    expect(hintAt([forest], 28, 52)).toBe(forest);
+  });
+
   it('returns null away from every hint', () => {
     expect(hintAt([forest, desert], 80, 40)).toBeNull();
     expect(hintAt([], 40, 40)).toBeNull();

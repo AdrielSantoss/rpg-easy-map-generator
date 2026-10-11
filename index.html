@@ -30,6 +30,9 @@
           <button data-tool="swamp">Pântano</button>
           <button data-tool="tundra">Neve</button>
           <button data-tool="plains">Planície</button>
+          <button id="clear-hints" title="Desfaz tudo o que foi pintado e volta ao terreno natural">
+            Limpar pintura
+          </button>
         </section>
         <section class="map-only">
           <h2>Estruturas</h2>
@@ -42,7 +45,7 @@
           <button data-tool="dungeon">Masmorra</button>
         </section>
         <section class="map-only">
-          <button data-tool="remove" title="Clique numa estrutura ou num marcador de terreno para remover">
+          <button data-tool="remove" title="Clique numa estrutura ou numa área pintada para remover">
             Remover
           </button>
         </section>
@@ -54,6 +57,7 @@
             <canvas id="sketch" width="1200" height="800"></canvas>
             <canvas id="map"></canvas>
             <canvas id="overlay"></canvas>
+            <div id="brush" hidden></div>
           </div>
           <button id="zoom-reset" title="Voltar a ver o mapa inteiro" hidden></button>
         </div>
