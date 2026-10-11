@@ -5,10 +5,25 @@ import { fbm, type Noise2D } from './noise.ts';
 const CLOSE_R = 2;
 /** Land thinner than about twice this is dropped (stray lines that enclose nothing). */
 const OPEN_R = 2;
-/** Enclosed pockets smaller than this are scribble artifacts, not lakes. */
-const MIN_LAKE_CELLS = 120;
+/**
+ * Enclosed pockets smaller than this, measured after the strokes around them
+ * were thickened, are specks left by overlapping strokes rather than lakes. A
+ * lake drawn about 14 sketch pixels wide is the smallest that passes.
+ */
+const MIN_LAKE_CELLS = 3;
 /** How far (in cells) the noise can push the coast away from the drawn line. */
 const COAST_ROUGHNESS = 8;
+/**
+ * Around a lake the roughening is held to this fraction of the lake's own
+ * radius, so a small lake keeps its size instead of being erased or flooding
+ * the land around it.
+ */
+const LAKE_ROUGHNESS = 0.5;
+/**
+ * How much roughness comes back per cell of distance from a lake. Below 1, so
+ * the land around a lake stays land however hard the noise pushes.
+ */
+const LAKE_EASE = 0.5;
 
 /**
  * Turns the drawn strokes into a signed "land field": positive on land,
@@ -99,15 +114,89 @@ export function buildLandField(
   // simple sketch still gets bays, capes and islets.
   const toWater = chamferDistance(invert(land), w, h);
   const toLand = chamferDistance(land, w, h);
+  const roughness = roughnessAroundLakes(land, toLand, w, h);
   const field = new Float32Array(n);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = y * w + x;
       const signed = land[i] ? toWater[i] - 0.5 : 0.5 - toLand[i];
-      field[i] = signed + COAST_ROUGHNESS * fbm(coastNoise, x / 45, y / 45, 5, 0.6);
+      field[i] = signed + roughness[i] * fbm(coastNoise, x / 45, y / 45, 5, 0.6);
     }
   }
   return field;
+}
+
+/**
+ * How far the noise may move the coast at each cell: the full roughness along
+ * the sea, less inside and around each lake in proportion to the lake's size,
+ * easing back to full with distance from it.
+ */
+function roughnessAroundLakes(land: Uint8Array, toLand: Float32Array, w: number, h: number): Float32Array {
+  const n = w * h;
+  const roughness = new Float32Array(n).fill(COAST_ROUGHNESS);
+  const neighbors = (c: number, visit: (nb: number) => void) => {
+    const x = c % w;
+    const y = (c / w) | 0;
+    if (x > 0) visit(c - 1);
+    if (x < w - 1) visit(c + 1);
+    if (y > 0) visit(c - w);
+    if (y < h - 1) visit(c + w);
+  };
+
+  // Water reachable from the map border is sea; the rest is lakes.
+  const seen = new Uint8Array(n);
+  const sea: number[] = [];
+  const enter = (c: number) => {
+    if (!land[c] && !seen[c]) {
+      seen[c] = 1;
+      sea.push(c);
+    }
+  };
+  for (let x = 0; x < w; x++) {
+    enter(x);
+    enter((h - 1) * w + x);
+  }
+  for (let y = 0; y < h; y++) {
+    enter(y * w);
+    enter(y * w + w - 1);
+  }
+  while (sea.length) neighbors(sea.pop()!, enter);
+
+  // Each lake calms the noise over itself, then less and less over the cells
+  // around it, one ring at a time.
+  let ring: number[] = [];
+  for (let start = 0; start < n; start++) {
+    if (land[start] || seen[start]) continue;
+    const lake = [start];
+    seen[start] = 1;
+    let radius = 0;
+    for (let p = 0; p < lake.length; p++) {
+      radius = Math.max(radius, toLand[lake[p]]);
+      neighbors(lake[p], (nb) => {
+        if (!land[nb] && !seen[nb]) {
+          seen[nb] = 1;
+          lake.push(nb);
+        }
+      });
+    }
+    const calm = LAKE_ROUGHNESS * radius;
+    if (calm >= COAST_ROUGHNESS) continue;
+    for (const c of lake) roughness[c] = calm;
+    ring.push(...lake);
+  }
+  while (ring.length) {
+    const next: number[] = [];
+    for (const c of ring) {
+      neighbors(c, (nb) => {
+        if (roughness[c] + LAKE_EASE < roughness[nb]) {
+          roughness[nb] = roughness[c] + LAKE_EASE;
+          next.push(nb);
+        }
+      });
+    }
+    ring = next;
+  }
+  return roughness;
 }
 
 function invert(mask: Uint8Array): Uint8Array {

@@ -57,9 +57,55 @@ describe('buildLandField', () => {
     expect(field[at(W / 2 + 22, H / 2)]).toBeGreaterThan(0);
   });
 
-  it('fills in enclosed pockets too small to be a lake', () => {
+  for (const radius of [5, 7, 10]) {
+    it(`keeps a small lake drawn ${radius * 4} sketch pixels wide`, () => {
+      const wall = ringSketch(W, H, 32);
+      drawRing(wall, W, W / 2, H / 2, radius);
+      const field = buildLandField(wall, W, H, flat)!;
+      expect(field[CENTER]).toBeLessThan(0);
+      // Still a lake, not a hole through to the sea: there is land all around it.
+      for (const [dx, dy] of [
+        [radius + 6, 0],
+        [-radius - 6, 0],
+        [0, radius + 6],
+        [0, -radius - 6],
+      ]) {
+        expect(field[at(W / 2 + dx, H / 2 + dy)]).toBeGreaterThan(0);
+      }
+    });
+
+    it(`does not let coast roughening erase a lake ${radius * 4} sketch pixels wide`, () => {
+      const wall = ringSketch(W, H, 32);
+      drawRing(wall, W, W / 2, H / 2, radius);
+      // The worst case for a lake: noise pushing toward land everywhere, as hard as it gets.
+      const field = buildLandField(wall, W, H, () => 1)!;
+      expect(field[CENTER]).toBeLessThan(0);
+    });
+
+    it(`does not let coast roughening flood the land around a lake ${radius * 4} sketch pixels wide`, () => {
+      const wall = ringSketch(W, H, 32);
+      drawRing(wall, W, W / 2, H / 2, radius);
+      // The opposite worst case: noise pushing toward water everywhere, about as
+      // hard as real noise ever does.
+      const field = buildLandField(wall, W, H, () => -0.75)!;
+      const flat0 = buildLandField(wall, W, H, flat)!;
+      let lake = 0;
+      let drawn = 0;
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          if (Math.hypot(x - W / 2, y - H / 2) > radius + 12) continue;
+          if (field[at(x, y)] <= 0) lake++;
+          if (flat0[at(x, y)] <= 0) drawn++;
+        }
+      }
+      // It may grow a little, but stays a small lake rather than swallowing its surroundings.
+      expect(lake).toBeLessThan(drawn * 3 + 40);
+    });
+  }
+
+  it('ignores a pocket too tiny to have been meant as a lake', () => {
     const wall = ringSketch(W, H, 32);
-    drawRing(wall, W, W / 2, H / 2, 5);
+    drawRing(wall, W, W / 2, H / 2, 2);
     const field = buildLandField(wall, W, H, flat)!;
     expect(field[CENTER]).toBeGreaterThan(0);
   });
