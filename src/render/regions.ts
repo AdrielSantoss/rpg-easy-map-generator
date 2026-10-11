@@ -17,6 +17,7 @@ const SERIF = "Georgia, 'Times New Roman', serif";
 const STYLE: Record<RegionKind, LabelStyle> = {
   continent: { font: 'bold', color: 'rgba(58, 44, 30, 0.5)', spacing: 0.3, uppercase: true, halo: false },
   island: { font: 'italic', color: LAND_INK, spacing: 0, uppercase: false, halo: true },
+  land: { font: 'italic', color: LAND_INK, spacing: 0, uppercase: false, halo: true },
   sea: { font: 'italic', color: WATER_INK, spacing: 0.3, uppercase: true, halo: false },
   lake: { font: 'italic', color: WATER_INK, spacing: 0, uppercase: false, halo: false },
   mountains: { font: 'italic bold', color: LAND_INK, spacing: 0.04, uppercase: false, halo: true },

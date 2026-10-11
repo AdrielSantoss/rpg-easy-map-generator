@@ -27,6 +27,8 @@ export interface Project {
   roads: [number, number][];
   /** Names the user gave to regions, replacing the suggested ones. */
   regionNames: RegionName[];
+  /** Names the user wrote on the map at spots of their own choosing. */
+  labels: RegionName[];
   showRegions: boolean;
 }
 
@@ -97,6 +99,7 @@ export function parseProject(text: string): Project | null {
     structures: [],
     roads: [],
     regionNames: [],
+    labels: [],
     showRegions: data.showRegions,
   };
 
@@ -125,9 +128,17 @@ export function parseProject(text: string): Project | null {
     if (!valid(from) || !valid(to) || from === to) return null;
     project.roads.push([from as number, to as number]);
   }
-  for (const entry of regionNames as unknown[]) {
-    if (!isPlaced(entry) || !isOneOf(REGION_KINDS, entry.kind) || !isText(entry.name)) return null;
-    project.regionNames.push({ kind: entry.kind, x: entry.x, y: entry.y, name: entry.name });
+  // Projects saved before written labels existed have no such list.
+  const labels = data.labels ?? [];
+  if (!Array.isArray(labels)) return null;
+  for (const [list, entries] of [
+    [project.regionNames, regionNames],
+    [project.labels, labels],
+  ] as [RegionName[], unknown[]][]) {
+    for (const entry of entries) {
+      if (!isPlaced(entry) || !isOneOf(REGION_KINDS, entry.kind) || !isText(entry.name)) return null;
+      list.push({ kind: entry.kind, x: entry.x, y: entry.y, name: entry.name });
+    }
   }
   return project;
 }

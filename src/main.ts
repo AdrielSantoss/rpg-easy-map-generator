@@ -6,8 +6,11 @@ import {
   applyRegionNames,
   dodge,
   findRegions,
+  labelWidth,
+  makeLabel,
   nameRegion,
   regionAt,
+  regionKindAt,
   suggestRegionName,
   type Region,
   type RegionName,
@@ -39,7 +42,7 @@ const SHARPEN_DELAY = 300;
 /** While dragging a terrain brush, a new dab is laid down every this many cells. */
 const BRUSH_SPACING = HINT_RADIUS * 0.5;
 
-type MapTool = StructureKind | BrushKind | 'remove' | null;
+type MapTool = StructureKind | BrushKind | 'label' | 'remove' | null;
 
 /** A road between two structures; it lives and dies with them. */
 interface Road {
@@ -107,6 +110,8 @@ let shownRegions: Region[] = [];
 let editingRegion: Region | null = null;
 /** For each label in `shownRegions`, the region as it was found on the map (same order). */
 let shownSources: Region[] = [];
+/** Names the user wrote on the map at spots of their own choosing. */
+let writtenLabels: Region[] = [];
 /** Off for the ?demo pages, so trying the demo does not overwrite the user's saved map. */
 const autosave = !new URLSearchParams(location.search).has('demo');
 /** True while a saved project is being loaded, when the half-loaded state must not be saved. */
@@ -174,7 +179,9 @@ const structureMenu = new StructureMenu($('structure-menu'), {
 const regionMenu = new RegionMenu($('region-menu'), {
   onRename: (name) => {
     if (!editingRegion) return;
-    regionNames = nameRegion(regionNames, editingRegion, name, GRID_W);
+    // A name the user wrote is edited in place; a found region gets its name on file.
+    if (writtenLabels.includes(editingRegion)) editingRegion.name = name;
+    else regionNames = nameRegion(regionNames, editingRegion, name, GRID_W);
     closeRegionMenu();
     redrawOverlay();
   },
@@ -182,12 +189,20 @@ const regionMenu = new RegionMenu($('region-menu'), {
   onRemove: () => {
     if (!editingRegion) return;
     const region = editingRegion;
-    const before = regionNames;
-    regionNames = nameRegion(regionNames, region, '', GRID_W);
-    undoStack.push(() => {
-      regionNames = before;
-    });
-    status.textContent = 'Nome excluído. "Restaurar nomes" traz de volta os que foram excluídos.';
+    if (writtenLabels.includes(region)) {
+      writtenLabels = writtenLabels.filter((label) => label !== region);
+      undoStack.push(() => {
+        writtenLabels.push(region);
+      });
+      status.textContent = 'Nome excluído.';
+    } else {
+      const before = regionNames;
+      regionNames = nameRegion(regionNames, region, '', GRID_W);
+      undoStack.push(() => {
+        regionNames = before;
+      });
+      status.textContent = 'Nome excluído. "Restaurar nomes" traz de volta os que foram excluídos.';
+    }
     closeRegionMenu();
     redrawOverlay();
   },
@@ -205,11 +220,16 @@ function layoutRegions(): Region[] {
   // An empty name means the user took that region's name off the map.
   const named = applyRegionNames(foundRegions, regionNames, GRID_W);
   const kept = named.map((_, index) => index).filter((index) => named[index].name !== '');
-  shownSources = kept.map((index) => foundRegions[index]);
-  return dodge(
-    kept.map((index) => named[index]),
-    structures.map(structureFootprint),
-  );
+  shownSources = [...writtenLabels, ...kept.map((index) => foundRegions[index])];
+  // Names the user wrote stay exactly where they were put; the found ones move out of their way.
+  const written = writtenLabels.map((l) => ({ x: l.x, y: l.y, width: labelWidth(l), height: l.size }));
+  return [
+    ...writtenLabels,
+    ...dodge(
+      kept.map((index) => named[index]),
+      [...structures.map(structureFootprint), ...written],
+    ),
+  ];
 }
 
 function openRegionMenu(region: Region): void {
@@ -237,6 +257,7 @@ function snapshot(): Project {
     structures,
     roads: roads.map((road) => [structures.indexOf(road.from), structures.indexOf(road.to)]),
     regionNames,
+    labels: writtenLabels.map(({ kind, x, y, name }) => ({ kind, x, y, name })),
     showRegions,
   };
 }
@@ -271,6 +292,7 @@ async function restore(project: Project): Promise<void> {
   // The routes are found again once the map exists.
   roads = project.roads.map(([from, to]) => ({ from: structures[from], to: structures[to], path: NO_ROUTE }));
   regionNames = project.regionNames;
+  writtenLabels = project.labels.map((l) => makeLabel(l.kind, l.x, l.y, l.name, GRID_W));
   showRegions = project.showRegions;
   $('toggle-regions').classList.toggle('active', showRegions);
   setMapTool(null);
@@ -293,8 +315,25 @@ function emptyProject(): Project {
     structures: [],
     roads: [],
     regionNames: [],
+    labels: [],
     showRegions: true,
   };
+}
+
+/** Writes a new name on the map at the given spot and opens it for the user to type over. */
+function writeLabel(x: number, y: number): void {
+  if (!currentMap) return;
+  // Writing a name while names are hidden would look like nothing happened.
+  showRegions = true;
+  $('toggle-regions').classList.add('active');
+  const kind = regionKindAt(currentMap.biome[Math.floor(y) * GRID_W + Math.floor(x)]);
+  const label = makeLabel(kind, x, y, suggestRegionName(kind), GRID_W);
+  writtenLabels.push(label);
+  undoStack.push(() => {
+    writtenLabels = writtenLabels.filter((other) => other !== label);
+  });
+  redrawOverlay();
+  openRegionMenu(label);
 }
 
 function setMode(mode: 'sketch' | 'map'): void {
@@ -563,10 +602,12 @@ function onMapPointerDown(e: PointerEvent): void {
     select(structure);
   } else {
     select(null);
-    if (!mapTool) {
-      // With no tool in hand, clicking a region's name edits it.
+    if (!mapTool || mapTool === 'label') {
+      // With no tool, or with the name tool, clicking a name edits it; the name
+      // tool also writes a new one wherever there is none.
       const region = regionAt(shownRegions, x, y);
       if (region) openRegionMenu(region);
+      else if (mapTool === 'label') writeLabel(x, y);
       return;
     }
     if (!isLand(currentMap, x, y)) {
@@ -592,7 +633,8 @@ function onMapPointerMove(e: PointerEvent): void {
   const opensMenu =
     !isTerrainKind(mapTool) &&
     mapTool !== 'remove' &&
-    (structureAt(structures, x, y) !== null || (mapTool === null && regionAt(shownRegions, x, y) !== null));
+    (structureAt(structures, x, y) !== null ||
+      ((mapTool === null || mapTool === 'label') && regionAt(shownRegions, x, y) !== null));
   overlay.classList.toggle('clickable', opensMenu);
   if (!stroke || !currentMap) return;
   const last = stroke[stroke.length - 1];

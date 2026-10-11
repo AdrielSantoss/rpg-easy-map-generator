@@ -13,6 +13,8 @@ export const REGION_KINDS = [
   'forest',
   'desert',
   'swamp',
+  // Open land with no feature of its own. Never found automatically: only the user writes these.
+  'land',
 ] as const;
 export type RegionKind = (typeof REGION_KINDS)[number];
 
@@ -46,7 +48,7 @@ export type RegionTerrain = Pick<MapData, 'w' | 'h' | 'biome' | 'seed'>;
  * Smallest region worth a name, as a fraction of the whole map, and the most
  * labels of that kind to show (the largest regions win).
  */
-const WORTH_NAMING: Record<Exclude<RegionKind, 'sea'>, { minArea: number; most: number }> = {
+const WORTH_NAMING: Record<Exclude<RegionKind, 'sea' | 'land'>, { minArea: number; most: number }> = {
   continent: { minArea: 0.025, most: 6 },
   island: { minArea: 0.001, most: 6 },
   lake: { minArea: 0.0006, most: 3 },
@@ -85,6 +87,7 @@ const WORDS: Record<Exclude<RegionKind, 'continent'>, string[]> = {
   forest: ['Floresta de', 'Bosque de', 'Mata de'],
   desert: ['Deserto de', 'Ermo de'],
   swamp: ['Pântano de', 'Charco de'],
+  land: ['Vale de', 'Campos de', 'Terras de'],
 };
 
 /** Suggests a name fitting the kind of region. */
@@ -178,7 +181,7 @@ export function findRegions(map: RegionTerrain): Region[] {
   const cells = w * h;
   const found: Omit<Region, 'name' | 'size'>[] = [];
   const maskOf = (...biomes: number[]) => Uint8Array.from(biome, (b) => (biomes.includes(b) ? 1 : 0));
-  const largest = (patches: Patch[], kind: Exclude<RegionKind, 'sea'>) =>
+  const largest = (patches: Patch[], kind: keyof typeof WORTH_NAMING) =>
     patches
       .filter((p) => p.area >= WORTH_NAMING[kind].minArea * cells)
       .sort((a, b) => b.area - a.area)
@@ -338,4 +341,32 @@ export function dodge(regions: readonly Region[], obstacles: readonly Obstacle[]
     placed.push(step === undefined ? { ...region } : { ...region, y: region.y + step * region.size });
   }
   return placed;
+}
+
+/**
+ * The kind of region a spot belongs to, going by its terrain. It decides how a
+ * name the user writes there looks.
+ */
+export function regionKindAt(biome: number): RegionKind {
+  switch (biome) {
+    case Biome.Water:
+      return 'sea';
+    case Biome.Mountains:
+    case Biome.Hills:
+      return 'mountains';
+    case Biome.Forest:
+    case Biome.Taiga:
+      return 'forest';
+    case Biome.Desert:
+      return 'desert';
+    case Biome.Swamp:
+      return 'swamp';
+    default:
+      return 'land';
+  }
+}
+
+/** A name the user writes at a spot of their choosing, on a map `w` cells wide. */
+export function makeLabel(kind: RegionKind, x: number, y: number, name: string, w: number): Region {
+  return { kind, x, y, area: 0, name, size: labelSize(kind, 0, w) };
 }

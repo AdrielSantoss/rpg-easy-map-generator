@@ -20,6 +20,7 @@ const project = (): Project => ({
   ],
   roads: [[0, 1]],
   regionNames: [{ kind: 'forest', x: 180, y: 140, name: 'Bosque dos Sussurros' }],
+  labels: [{ kind: 'sea', x: 90, y: 300, name: 'Baía das Sereias' }],
   showRegions: true,
 });
 
@@ -45,6 +46,7 @@ describe('saving and loading a project', () => {
       structures: [],
       roads: [],
       regionNames: [],
+      labels: [],
       showRegions: false,
     };
     expect(parseProject(serializeProject(empty))).toEqual(empty);
@@ -100,6 +102,15 @@ describe('parseProject', () => {
   it('rejects names long enough to break the page', () => {
     expect(tampered((d) => ((d.structures as { name: string }[])[0].name = 'x'.repeat(500)))).toBeNull();
     expect(tampered((d) => (d.seed = 'x'.repeat(500)))).toBeNull();
+  });
+
+  it('opens a project saved before written labels existed', () => {
+    expect(tampered((d) => delete d.labels)).toEqual({ ...project(), labels: [] });
+  });
+
+  it('rejects a written label of an unknown kind', () => {
+    expect(tampered((d) => ((d.labels as { kind: string }[])[0].kind = 'nebula'))).toBeNull();
+    expect(tampered((d) => (d.labels = 'none'))).toBeNull();
   });
 
   it('ignores fields it does not know', () => {

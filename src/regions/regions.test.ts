@@ -8,9 +8,11 @@ import {
   dodge,
   findRegions,
   labelWidth,
+  makeLabel,
   nameRegion,
   REGION_KINDS,
   regionAt,
+  regionKindAt,
   suggestRegionName,
   type Region,
   type RegionKind,
@@ -93,6 +95,10 @@ describe('findRegions', () => {
     const names = (seed: string) => findRegions(world(seed)).map((r) => r.name);
     expect(names('aldoria')).toEqual(names('aldoria'));
     expect(names('aldoria')).not.toEqual(names('another'));
+  });
+
+  it('never suggests a name for plain open land on its own', () => {
+    expect(only(regions, 'land')).toEqual([]);
   });
 
   it('finds nothing to name on a map that is all water', () => {
@@ -182,6 +188,31 @@ describe('names chosen by the user', () => {
     const second = nameRegion(first, { ...forest, x: forest.x + 3 }, 'Segundo', W);
     expect(second).toHaveLength(1);
     expect(applyRegionNames(regions, second, W).find((r) => r.kind === 'forest')!.name).toBe('Segundo');
+  });
+});
+
+describe('names written by the user', () => {
+  it('take the style of the terrain they are written on', () => {
+    expect(regionKindAt(Biome.Water)).toBe('sea');
+    expect(regionKindAt(Biome.Mountains)).toBe('mountains');
+    expect(regionKindAt(Biome.Hills)).toBe('mountains');
+    expect(regionKindAt(Biome.Forest)).toBe('forest');
+    expect(regionKindAt(Biome.Taiga)).toBe('forest');
+    expect(regionKindAt(Biome.Desert)).toBe('desert');
+    expect(regionKindAt(Biome.Swamp)).toBe('swamp');
+    expect(regionKindAt(Biome.Plains)).toBe('land');
+  });
+
+  it('sit exactly where they were put and can be clicked like any other name', () => {
+    const label = makeLabel('forest', 123.5, 45.5, 'Vale Perdido', W);
+    expect([label.x, label.y, label.name]).toEqual([123.5, 45.5, 'Vale Perdido']);
+    expect(label.size).toBeGreaterThan(0);
+    expect(regionAt([label], 123.5, 45.5)).toBe(label);
+  });
+
+  it('are sized like the names of found regions of the same kind', () => {
+    const found = findRegions(world()).find((r) => r.kind === 'forest')!;
+    expect(makeLabel('forest', 10, 10, 'x', W).size).toBe(found.size);
   });
 });
 
