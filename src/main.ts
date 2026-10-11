@@ -1,6 +1,7 @@
 import { normalizeDistribution, retarget, type TerrainDistribution } from './generator/distribution.ts';
 import { BRUSH_KINDS, HINT_RADIUS, hintAt, type BrushKind, type TerrainHint } from './generator/hints.ts';
 import { generateMap, type MapData } from './generator/index.ts';
+import { History } from './project/history.ts';
 import { parseProject, serializeProject, type Project } from './project/project.ts';
 import {
   applyRegionNames,
@@ -57,8 +58,8 @@ const ROAD_PICK_DISTANCE = 3;
 const NO_ROUTE: RoadPath = { cells: new Int32Array(0), points: new Float32Array(0), bridges: [] };
 /** Where the project is kept in this browser. */
 const STORAGE_KEY = 'rpg-easy-map-generator:project';
-/** How long (ms) after the last change the project is saved. */
-const SAVE_DELAY = 500;
+/** How long (ms) after the last change the project is saved and becomes an undo step. */
+const SAVE_DELAY = 200;
 
 const isTerrainKind = (tool: MapTool): tool is BrushKind =>
   (BRUSH_KINDS as readonly string[]).includes(tool ?? '');
@@ -94,8 +95,6 @@ let shownDistribution: TerrainDistribution | null = null;
 let mapTool: MapTool = null;
 /** Terrain dabs of the brush drag in progress; they reach the map when the button is released. */
 let stroke: TerrainHint[] | null = null;
-/** Undo steps for things placed on the map, most recent last. */
-const undoStack: (() => void)[] = [];
 /** Pixels per cell the map and overlay canvases are currently painted at. */
 let paintedScale = VIEW_SCALE;
 let sharpenTimer = 0;
@@ -112,11 +111,20 @@ let editingRegion: Region | null = null;
 let shownSources: Region[] = [];
 /** Names the user wrote on the map at spots of their own choosing. */
 let writtenLabels: Region[] = [];
+/**
+ * A name just written whose box is still open for typing. Writing it and
+ * typing over the suggestion are one change, so nothing is recorded meanwhile.
+ */
+let draftLabel: Region | null = null;
 /** Off for the ?demo pages, so trying the demo does not overwrite the user's saved map. */
 const autosave = !new URLSearchParams(location.search).has('demo');
 /** True while a saved project is being loaded, when the half-loaded state must not be saved. */
 let restoring = false;
 let saveTimer = 0;
+/** Undo and redo steps since the project was opened. */
+const history = new History('');
+/** The terrain key (see terrainKey) of the map on screen, or '' when there is none. */
+let mapKey = '';
 
 overlay.width = GRID_W * VIEW_SCALE;
 overlay.height = GRID_H * VIEW_SCALE;
@@ -152,10 +160,6 @@ const structureMenu = new StructureMenu($('structure-menu'), {
     if (!selected) return;
     const removed = roadsOf(selected);
     roads = roads.filter((road) => !removed.includes(road));
-    undoStack.push(() => {
-      // Only roads whose two ends still exist can come back.
-      roads.push(...removed.filter((r) => structures.includes(r.from) && structures.includes(r.to)));
-    });
     status.textContent = `${removed.length} estrada(s) removida(s). "${selected.name}" ficou sem ligações.`;
     select(selected);
   },
@@ -191,16 +195,9 @@ const regionMenu = new RegionMenu($('region-menu'), {
     const region = editingRegion;
     if (writtenLabels.includes(region)) {
       writtenLabels = writtenLabels.filter((label) => label !== region);
-      undoStack.push(() => {
-        writtenLabels.push(region);
-      });
       status.textContent = 'Nome excluído.';
     } else {
-      const before = regionNames;
       regionNames = nameRegion(regionNames, region, '', GRID_W);
-      undoStack.push(() => {
-        regionNames = before;
-      });
       status.textContent = 'Nome excluído. "Restaurar nomes" traz de volta os que foram excluídos.';
     }
     closeRegionMenu();
@@ -243,6 +240,10 @@ function openRegionMenu(region: Region): void {
 function closeRegionMenu(): void {
   editingRegion = null;
   regionMenu.close();
+  if (draftLabel) {
+    draftLabel = null;
+    saveSoon();
+  }
 }
 
 /** Everything the user made, in the form it is saved in. */
@@ -262,30 +263,82 @@ function snapshot(): Project {
   };
 }
 
-/** Saves the project in this browser shortly after the last change. */
-function saveSoon(): void {
-  if (!autosave || restoring) return;
-  clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, serializeProject(snapshot()));
-    } catch {
-      // Storage full or blocked: the map still works, it just will not survive a reload.
-    }
-  }, SAVE_DELAY);
+/**
+ * The part of a saved project the terrain is generated from. Two states with
+ * the same key have the same map, so going from one to the other needs no
+ * regeneration.
+ */
+function terrainKey(saved: string): string {
+  const { seed, sketch, hints, distribution } = JSON.parse(saved) as Project;
+  return JSON.stringify([seed, sketch, hints, distribution]);
 }
 
-/** Replaces everything on screen with a saved project. */
-async function restore(project: Project): Promise<void> {
+/** Notes that the project may have changed: shortly after, it is saved and becomes an undo step. */
+function saveSoon(): void {
+  if (restoring) return;
+  clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(commitChange, SAVE_DELAY);
+}
+
+/** Records the project as it is now, as one undo step, and saves it in this browser. */
+function commitChange(): void {
+  clearTimeout(saveTimer);
+  saveTimer = 0;
+  if (restoring) return;
+  // A stroke still being drawn, or a name still being typed, is half a change: wait for it to finish.
+  if (sketch.isDrawing || stroke || draftLabel) {
+    saveSoon();
+    return;
+  }
+  const state = serializeProject(snapshot());
+  history.record(state);
+  refreshUndoButtons();
+  persist(state);
+}
+
+function persist(state: string): void {
+  if (!autosave) return;
+  try {
+    localStorage.setItem(STORAGE_KEY, state);
+  } catch {
+    // Storage full or blocked: the map still works, it just will not survive a reload.
+  }
+}
+
+function refreshUndoButtons(): void {
+  for (const id of ['undo', 'undo-map']) $<HTMLButtonElement>(id).disabled = !history.canUndo;
+  $<HTMLButtonElement>('redo').disabled = !history.canRedo;
+}
+
+/** Goes one change back or forward. Every kind of change is one step. */
+async function stepHistory(direction: 'undo' | 'redo'): Promise<void> {
+  if (restoring || generateButton.disabled) return;
+  // A change made a moment ago must become a step before stepping away from it.
+  if (saveTimer) commitChange();
+  const state = direction === 'undo' ? history.undo() : history.redo();
+  const project = state === null ? null : parseProject(state);
+  if (state === null || !project) {
+    status.textContent = direction === 'undo' ? 'Nada para desfazer.' : 'Nada para refazer.';
+    return;
+  }
+  await restore(project, false);
+  persist(state);
+  status.textContent = direction === 'undo' ? 'Desfeito.' : 'Refeito.';
+}
+
+/**
+ * Replaces everything on screen with a saved project. `fresh` is for opening
+ * a project (the view and the undo steps start over); without it the project
+ * is a step of the undo history, shown with as little disturbance as possible.
+ */
+async function restore(project: Project, fresh = true): Promise<void> {
   restoring = true;
   select(null);
   closeRegionMenu();
-  undoStack.length = 0;
-  currentMap = null;
-  foundRegions = [];
-  shownRegions = [];
+  // Same sketch, seed and terrain choices as the map on screen: keep the map.
+  const sameMap = !fresh && currentMap !== null && terrainKey(serializeProject(project)) === mapKey;
   sketch.load(project.sketch);
-  seedInput.value = project.seed || randomSeed();
+  seedInput.value = fresh ? project.seed || randomSeed() : project.seed;
   hints = project.hints;
   distribution = project.distribution;
   structures = project.structures;
@@ -295,13 +348,32 @@ async function restore(project: Project): Promise<void> {
   writtenLabels = project.labels.map((l) => makeLabel(l.kind, l.x, l.y, l.name, GRID_W));
   showRegions = project.showRegions;
   $('toggle-regions').classList.toggle('active', showRegions);
-  setMapTool(null);
-  zoom.reset();
-  setMode('sketch');
-  status.textContent = '';
-  if (project.generated) await generate();
+  if (fresh) {
+    currentMap = null;
+    mapKey = '';
+    foundRegions = [];
+    shownRegions = [];
+    setMapTool(null);
+    zoom.reset();
+    status.textContent = '';
+  }
+  if (!project.generated) {
+    setMode('sketch');
+  } else if (sameMap) {
+    routeRoads();
+    setMode('map');
+    redrawOverlay();
+  } else {
+    setMode('sketch');
+    await generate();
+  }
   restoring = false;
-  saveSoon();
+  if (fresh) {
+    const state = serializeProject(snapshot());
+    history.reset(state);
+    persist(state);
+  }
+  refreshUndoButtons();
 }
 
 function emptyProject(): Project {
@@ -329,9 +401,7 @@ function writeLabel(x: number, y: number): void {
   const kind = regionKindAt(currentMap.biome[Math.floor(y) * GRID_W + Math.floor(x)]);
   const label = makeLabel(kind, x, y, suggestRegionName(kind), GRID_W);
   writtenLabels.push(label);
-  undoStack.push(() => {
-    writtenLabels = writtenLabels.filter((other) => other !== label);
-  });
+  draftLabel = label;
   redrawOverlay();
   openRegionMenu(label);
 }
@@ -425,6 +495,7 @@ function generate(): Promise<void> {
           return;
         }
         currentMap = map;
+        mapKey = terrainKey(serializeProject(snapshot()));
         foundRegions = findRegions(map);
 
         // The coast may have moved; structures left in the sea are dropped.
@@ -534,9 +605,6 @@ function addRoad(from: Structure, to: Structure): void {
     status.textContent = `Não há caminho por terra entre "${from.name}" e "${to.name}".`;
     return;
   }
-  undoStack.push(() => {
-    roads = roads.filter((other) => other !== road);
-  });
   status.textContent = `Estrada criada entre "${from.name}" e "${to.name}".`;
 }
 
@@ -557,9 +625,6 @@ function connectAll(): void {
     status.textContent = 'Tudo o que dá para ligar por terra já está ligado.';
     return;
   }
-  undoStack.push(() => {
-    roads = roads.filter((road) => !built.includes(road));
-  });
   status.textContent = `${built.length} estrada(s) criada(s).`;
   redrawOverlay();
 }
@@ -616,7 +681,6 @@ function onMapPointerDown(e: PointerEvent): void {
     }
     const placed: Structure = { kind: mapTool, x, y, name: suggestName(mapTool) };
     structures.push(placed);
-    undoStack.push(() => removeStructure(placed));
     status.textContent = `"${placed.name}" adicionado. Clique nele para ver as opções.`;
   }
   redrawOverlay();
@@ -649,10 +713,6 @@ function onMapPointerUp(): void {
   const painted = stroke;
   stroke = null;
   hints.push(...painted);
-  undoStack.push(() => {
-    hints = hints.filter((hint) => !painted.includes(hint));
-    generate();
-  });
   generate();
 }
 
@@ -681,7 +741,8 @@ function exportPng(): void {
 
 toolButtons.pen.addEventListener('click', () => setTool('pen'));
 toolButtons.eraser.addEventListener('click', () => setTool('eraser'));
-$('undo').addEventListener('click', () => sketch.undo());
+for (const id of ['undo', 'undo-map']) $(id).addEventListener('click', () => stepHistory('undo'));
+$('redo').addEventListener('click', () => stepHistory('redo'));
 $('clear').addEventListener('click', () => sketch.clear());
 $('example').addEventListener('click', () => sketch.loadExample());
 $('back').addEventListener('click', () => {
@@ -745,14 +806,12 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   // In a text field Ctrl+Z belongs to the typing, not to the map.
-  if (!(e.ctrlKey || e.metaKey) || e.key !== 'z' || e.target instanceof HTMLInputElement) return;
+  if (!(e.ctrlKey || e.metaKey) || e.target instanceof HTMLInputElement) return;
+  const key = e.key.toLowerCase();
+  const redo = key === 'y' || (key === 'z' && e.shiftKey);
+  if (key !== 'z' && !redo) return;
   e.preventDefault();
-  if (document.body.dataset.mode === 'sketch') {
-    sketch.undo();
-  } else {
-    undoStack.pop()?.();
-    redrawOverlay();
-  }
+  stepHistory(redo ? 'redo' : 'undo');
 });
 
 $('toggle-regions').addEventListener('click', () => {
@@ -810,8 +869,11 @@ if (!params.has('demo')) {
   }
   const project = saved ? parseProject(saved) : null;
   if (project) restore(project);
+  else history.reset(serializeProject(snapshot()));
 }
 if (params.has('demo')) {
+  // Setting the demo up is not something to undo: the history starts once it is on screen.
+  restoring = true;
   seedInput.value = params.get('demo') || 'demo';
   sketch.loadExample();
   if (params.has('shares')) {
@@ -844,5 +906,7 @@ if (params.has('demo')) {
       if (currentMap && isLand(currentMap, x, y)) structures.push({ kind, x, y, name: suggestName(kind) });
     }
     redrawOverlay();
+    restoring = false;
+    history.reset(serializeProject(snapshot()));
   });
 }

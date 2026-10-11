@@ -18,7 +18,7 @@
           <h2>Desenho</h2>
           <button id="tool-pen" class="active" title="Desenhar contorno">Pincel</button>
           <button id="tool-eraser" title="Apagar traços">Borracha</button>
-          <button id="undo" title="Desfazer último traço (Ctrl+Z)">Desfazer</button>
+          <button id="undo" title="Desfaz a última alteração (Ctrl+Z)" disabled>Desfazer</button>
           <button id="clear">Limpar</button>
           <button id="example" title="Carrega um esboço de exemplo">Exemplo</button>
         </section>
@@ -102,6 +102,10 @@
         </section>
         <section>
           <h2>Projeto</h2>
+          <div class="pair">
+            <button id="undo-map" title="Desfaz a última alteração (Ctrl+Z)" disabled>Desfazer</button>
+            <button id="redo" title="Refaz o que foi desfeito (Ctrl+Y)" disabled>Refazer</button>
+          </div>
           <button
             id="save-file"
             title="Baixa um arquivo com tudo: esboço, terreno, estruturas, estradas e nomes"

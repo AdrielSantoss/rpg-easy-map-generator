@@ -51,13 +51,13 @@ export class SketchBoard {
     this.redraw();
   }
 
-  get isEmpty(): boolean {
-    return !this.strokes.some((s) => s.tool === 'pen');
+  /** True while a stroke is being drawn, before the button comes up. */
+  get isDrawing(): boolean {
+    return this.current !== null;
   }
 
-  undo(): void {
-    this.strokes.pop();
-    this.redraw();
+  get isEmpty(): boolean {
+    return !this.strokes.some((s) => s.tool === 'pen');
   }
 
   clear(): void {

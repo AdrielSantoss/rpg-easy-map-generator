@@ -115,12 +115,11 @@ button.primary:hover {
 
 button:disabled {
   opacity: 0.5;
-  cursor: wait;
+  cursor: default;
 }
 
-.map-menu button:disabled,
-#restore-regions:disabled {
-  cursor: default;
+#generate:disabled {
+  cursor: wait;
 }
 
 label {
@@ -263,6 +262,11 @@ dialog p {
   border-bottom: 1px solid var(--border);
   color: var(--muted);
   font-size: 0.85rem;
+}
+
+.panel .pair {
+  display: flex;
+  gap: 5px;
 }
 
 .panel .hint {
