@@ -49,13 +49,10 @@ export class DistributionPanel {
     this.refresh();
   }
 
-  /**
-   * The values as set: terrain shares in percent (they may not add up to 100)
-   * and snow as a fraction of the land.
-   */
+  /** The values as set, as fractions of the land. The terrain shares may not add up to 1. */
   get values(): TerrainDistribution {
     const shares = {} as TerrainShares;
-    for (const kind of TERRAIN_KINDS) shares[kind] = Number(this.sliders[kind].value);
+    for (const kind of TERRAIN_KINDS) shares[kind] = Number(this.sliders[kind].value) / 100;
     return { shares, snow: Number(this.sliders.snow.value) / 100 };
   }
 

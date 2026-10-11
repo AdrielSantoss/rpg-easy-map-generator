@@ -1,4 +1,4 @@
-import type { TerrainDistribution } from './generator/distribution.ts';
+import { normalizeDistribution, retarget, type TerrainDistribution } from './generator/distribution.ts';
 import { BRUSH_KINDS, HINT_RADIUS, hintAt, type BrushKind, type TerrainHint } from './generator/hints.ts';
 import { generateMap, type MapData } from './generator/index.ts';
 import { drawBrushTrail, TERRAIN_COLOR } from './render/hints.ts';
@@ -44,8 +44,13 @@ const paletteButtons = [...document.querySelectorAll<HTMLElement>('[data-tool]')
 let currentMap: MapData | null = null;
 let structures: Structure[] = [];
 let hints: TerrainHint[] = [];
-/** Terrain shares and snow cover the user asked for; null lets the climate decide. */
+/**
+ * Terrain shares and snow cover the user asked for; null lets the climate
+ * decide. It describes the map before painting: painted areas come on top.
+ */
 let distribution: TerrainDistribution | null = null;
+/** What the distribution dialog showed when it was opened, to tell what the user changed. */
+let shownDistribution: TerrainDistribution | null = null;
 let mapTool: MapTool = null;
 /** Terrain dabs of the brush drag in progress; they reach the map when the button is released. */
 let stroke: TerrainHint[] | null = null;
@@ -274,11 +279,16 @@ $('export').addEventListener('click', exportPng);
 $('open-distribution').addEventListener('click', () => {
   // Start from what the map has now, discarding slider changes that were cancelled.
   if (currentMap) distributionPanel.show(currentMap.distribution);
+  shownDistribution = distributionPanel.values;
   distributionDialog.showModal();
 });
 $('cancel-distribution').addEventListener('click', () => distributionDialog.close());
 $('apply-distribution').addEventListener('click', () => {
-  distribution = distributionPanel.values;
+  // The sliders show the map as it is, painting included, so only what the user
+  // moved is applied: painted areas stay and are not counted twice.
+  const edited = distributionPanel.values;
+  const next = retarget(distribution, shownDistribution ?? edited, edited);
+  distribution = normalizeDistribution(next) && next;
   distributionDialog.close();
   generate();
 });

@@ -72,23 +72,46 @@ function forEachCell(
   }
 }
 
-/** How strongly each cell is hinted for `kind` (0..1), or null when no hint asks for it. */
-export function hintCoverage(
+/** A cell counts as painted where a dab is at least this strong. */
+const PAINT_THRESHOLD = 0.5;
+
+/** What the brush painted on each cell, after later dabs have overridden earlier ones. */
+export interface PaintedTerrain {
+  /** Index into TERRAIN_KINDS of the base terrain painted here, or -1 where none was. */
+  base: Int8Array;
+  /** 1 where snow was painted, 0 where a painted swamp or desert keeps snow off, -1 elsewhere. */
+  snow: Int8Array;
+}
+
+/**
+ * Resolves the brush dabs into what each cell was painted as. Snow shares a
+ * cell with mountains, forest or plains, but not with swamp or desert: there,
+ * whichever was painted last takes the cell.
+ */
+export function paintedTerrain(
   hints: readonly TerrainHint[],
-  kind: BrushKind,
   w: number,
   h: number,
   noise: Noise2D,
-): Float32Array | null {
-  let coverage: Float32Array | null = null;
+): PaintedTerrain {
+  const base = new Int8Array(w * h).fill(-1);
+  const snow = new Int8Array(w * h).fill(-1);
+  const meltsSnow = (kind: number) =>
+    kind === TERRAIN_KINDS.indexOf('swamp') || kind === TERRAIN_KINDS.indexOf('desert');
   for (const hint of hints) {
-    if (hint.kind !== kind) continue;
-    const out = (coverage ??= new Float32Array(w * h));
+    const kind = hint.kind === 'snow' ? -1 : TERRAIN_KINDS.indexOf(hint.kind);
     forEachCell(hint, w, h, noise, (i, weight) => {
-      if (weight > out[i]) out[i] = weight;
+      if (weight < PAINT_THRESHOLD) return;
+      if (hint.kind === 'snow') {
+        snow[i] = 1;
+        if (meltsSnow(base[i])) base[i] = -1;
+      } else {
+        base[i] = kind;
+        if (meltsSnow(kind)) snow[i] = 0;
+      }
     });
   }
-  return coverage;
+  return { base, snow };
 }
 
 /**

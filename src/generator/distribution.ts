@@ -1,6 +1,6 @@
 import { Biome, canHoldSnow } from './biome.ts';
 import { clamp, percentile } from './grid.ts';
-import { TERRAIN_KINDS, type BrushKind, type TerrainKind } from './hints.ts';
+import { TERRAIN_KINDS, type PaintedTerrain, type TerrainKind } from './hints.ts';
 
 /**
  * Share of the land each base terrain covers. "mountains" includes the
@@ -65,38 +65,56 @@ function byRank(cells: number[], score: Float32Array, rank: (i: number) => numbe
 }
 
 /**
- * Assigns a biome to every land cell so that each terrain covers its target
- * share, then lays snow over the target fraction of the land. Each goes where
- * the natural climate suits it best: mountains on the highest ground, snow in
- * the coldest places, desert where it is hot and dry, and so on. Swamp and
- * desert are kept out of the snow, so snow can fall short of its target when
- * those two need the cold ground. `coverage` (0..1 per cell) marks areas the
- * user painted; those are served first, as far as the targets allow.
+ * What the map would be like with nothing painted on it: the climate and
+ * relief the target shares are measured against.
+ */
+export interface NaturalClimate {
+  elevation: Float32Array;
+  moisture: Float32Array;
+  temperature: Float32Array;
+  /** Hill and mountain levels of the map without a distribution. */
+  hillLevel: number;
+  mountainLevel: number;
+}
+
+/**
+ * Assigns a biome and snow cover to every land cell, in two steps.
+ *
+ * First the land is divided to match the target shares as if nothing had been
+ * painted, each terrain going where the natural climate suits it best:
+ * mountains on the highest ground, snow in the coldest places, desert where it
+ * is hot and dry, and so on. Swamp and desert are kept out of the snow, so
+ * snow can fall short of its target when those two need the cold ground.
+ *
+ * Then what the user painted is laid on top, whatever the shares say. Painting
+ * therefore only ever changes the painted cells; the shares the finished map
+ * ends up with drift from the target by however much was painted.
+ *
+ * `elevation` is the final relief, with painted mountains raised.
  * `target` must already be normalized.
  */
 export function distributeBiomes(
   target: TerrainDistribution,
   land: Uint8Array,
+  natural: NaturalClimate,
   elevation: Float32Array,
-  moisture: Float32Array,
-  temperature: Float32Array,
-  coverage: Partial<Record<BrushKind, Float32Array>>,
+  painted: PaintedTerrain,
   biome: Uint8Array,
   snow: Uint8Array,
 ): { hillLevel: number; mountainLevel: number } {
   const { shares } = target;
+  const { moisture, temperature } = natural;
   const cells: number[] = [];
   for (let i = 0; i < land.length; i++) if (land[i]) cells.push(i);
   const score = new Float32Array(land.length);
-  const painted = (kind: BrushKind, i: number) => 2 * (coverage[kind]?.[i] ?? 0);
 
   // Snow first, on the coldest ground, so the terrains that cannot take it can avoid it.
   const coldest = cells.slice();
-  byRank(coldest, score, (i) => -temperature[i] + painted('snow', i));
+  byRank(coldest, score, (i) => -temperature[i]);
   const snowQuota = Math.round(target.snow * cells.length);
   for (let p = 0; p < snowQuota; p++) snow[coldest[p]] = 1;
 
-  const sorted = Float32Array.from(cells, (i) => elevation[i]).sort();
+  const sorted = Float32Array.from(cells, (i) => natural.elevation[i]).sort();
   let hillLevel = NO_HILLS;
   let mountainLevel = NO_MOUNTAINS;
   if (shares.mountains > 0) {
@@ -107,55 +125,91 @@ export function distributeBiomes(
 
   let rest: number[] = [];
   for (const i of cells) {
-    if (elevation[i] >= mountainLevel) biome[i] = Biome.Mountains;
-    else if (elevation[i] >= hillLevel) biome[i] = Biome.Hills;
+    if (natural.elevation[i] >= mountainLevel) biome[i] = Biome.Mountains;
+    else if (natural.elevation[i] >= hillLevel) biome[i] = Biome.Hills;
     else rest.push(i);
   }
 
   // Lowland terrains claim cells in this order, each taking the cells that rank
   // highest for it. Desert and swamp rank snowy ground last.
   const avoidSnow = (i: number) => -10 * snow[i];
-  const lowland: { kind: TerrainKind; rank: (i: number) => number; paint: (i: number) => number }[] = [
-    {
-      kind: 'desert',
-      rank: (i) => temperature[i] - moisture[i] + avoidSnow(i),
-      paint: () => Biome.Desert,
-    },
+  const lowland: { kind: TerrainKind; biome: number; rank: (i: number) => number }[] = [
+    { kind: 'desert', biome: Biome.Desert, rank: (i) => temperature[i] - moisture[i] + avoidSnow(i) },
     {
       kind: 'swamp',
-      rank: (i) => moisture[i] - 2 * elevation[i] + avoidSnow(i),
-      paint: () => Biome.Swamp,
+      biome: Biome.Swamp,
+      rank: (i) => moisture[i] - 2 * natural.elevation[i] + avoidSnow(i),
     },
-    {
-      kind: 'forest',
-      rank: (i) => moisture[i],
-      // Broadleaf trees do not grow in the cold or under snow; pines do.
-      paint: (i) => (snow[i] || temperature[i] < 0.4 ? Biome.Taiga : Biome.Forest),
-    },
-    { kind: 'plains', rank: () => 0, paint: () => Biome.Plains },
+    { kind: 'forest', biome: Biome.Forest, rank: (i) => moisture[i] },
+    { kind: 'plains', biome: Biome.Plains, rank: () => 0 },
   ];
   let last = lowland.length - 1;
   while (last >= 0 && shares[lowland[last].kind] <= 0) last--;
-  if (last < 0) {
-    for (const i of rest) biome[i] = Biome.Hills;
-    return { hillLevel, mountainLevel };
-  }
+  // With only mountains asked for, ground just below the hill level joins the foothills.
+  if (last < 0) for (const i of rest) biome[i] = Biome.Hills;
 
   for (let k = 0; k <= last; k++) {
-    const { kind, rank, paint } = lowland[k];
+    const { kind } = lowland[k];
     // The last wanted terrain takes whatever is left, absorbing rounding.
     const quota = k === last ? rest.length : Math.min(rest.length, Math.round(shares[kind] * cells.length));
     if (quota === 0) continue;
-    if (quota < rest.length) byRank(rest, score, (i) => rank(i) + painted(kind, i));
+    if (quota < rest.length) byRank(rest, score, lowland[k].rank);
     for (let p = 0; p < quota; p++) {
-      const i = rest[p];
-      biome[i] = paint(i);
+      biome[rest[p]] = lowland[k].biome;
       // Where swamp or desert had to take snowy ground, the snow gives way.
-      if (!canHoldSnow(biome[i])) snow[i] = 0;
+      if (!canHoldSnow(lowland[k].biome)) snow[rest[p]] = 0;
     }
     rest = rest.slice(quota);
   }
+
+  // Now the paint, over whatever the shares put there.
+  let paintedMountains = false;
+  for (const i of cells) {
+    const kind = painted.base[i] < 0 ? null : TERRAIN_KINDS[painted.base[i]];
+    if (kind === 'mountains') {
+      paintedMountains = true;
+      biome[i] = elevation[i] >= natural.mountainLevel ? Biome.Mountains : Biome.Hills;
+    } else if (kind === 'forest') biome[i] = Biome.Forest;
+    else if (kind === 'desert') biome[i] = Biome.Desert;
+    else if (kind === 'swamp') biome[i] = Biome.Swamp;
+    else if (kind === 'plains') biome[i] = Biome.Plains;
+
+    if (painted.snow[i] === 1) {
+      snow[i] = 1;
+      // Painted snow wins over an unpainted swamp or desert underneath.
+      if (!canHoldSnow(biome[i])) biome[i] = Biome.Plains;
+    } else if (!canHoldSnow(biome[i])) {
+      snow[i] = 0;
+    }
+    // Broadleaf trees do not grow in the cold or under snow; pines do.
+    if (biome[i] === Biome.Forest && (snow[i] || temperature[i] < 0.4)) biome[i] = Biome.Taiga;
+  }
+
+  // With mountains only where they were painted, renderers go by the natural relief.
+  if (shares.mountains <= 0 && paintedMountains) {
+    return { hillLevel: natural.hillLevel, mountainLevel: natural.mountainLevel };
+  }
   return { hillLevel, mountainLevel };
+}
+
+/**
+ * The new target after the user edits a panel that was showing the map's
+ * actual distribution: the old target moved by exactly what they changed.
+ * Editing nothing leaves the target as it was, even when painting has made
+ * the map differ from it. All arguments are fractions of the land.
+ */
+export function retarget(
+  target: TerrainDistribution | null,
+  shown: TerrainDistribution,
+  edited: TerrainDistribution,
+): TerrainDistribution {
+  const from = target && normalizeDistribution(target);
+  if (!from) return edited;
+  const shares = {} as TerrainShares;
+  for (const kind of TERRAIN_KINDS) {
+    shares[kind] = Math.max(0, from.shares[kind] + edited.shares[kind] - shown.shares[kind]);
+  }
+  return { shares, snow: clamp(from.snow + edited.snow - shown.snow, 0, 1) };
 }
 
 /**

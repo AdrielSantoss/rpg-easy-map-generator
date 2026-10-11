@@ -5,6 +5,7 @@ import {
   measureDistribution,
   normalizeDistribution,
   PEAK_SHARE,
+  retarget,
   type TerrainDistribution,
   type TerrainShares,
 } from './distribution.ts';
@@ -218,5 +219,148 @@ describe('snow as a cover over the terrain', () => {
     expect(map.distribution.snow).toBeCloseTo(0.4, 1.7);
     expect(map.distribution.shares.swamp).toBeCloseTo(0.15, 1.7);
     expect(map.distribution.shares.desert).toBeCloseTo(0.15, 1.7);
+  });
+});
+
+describe('painting on a map with a distribution', () => {
+  const at = (kind: TerrainHint['kind']): TerrainHint => ({ kind, x: W / 2, y: H / 2 });
+  const SEEDS = ['aldoria', 'another', 'third'];
+  /** Cells well outside the reach of a dab painted at the center. */
+  const farFromPaint = (i: number) => Math.hypot((i % W) - W / 2, Math.floor(i / W) - H / 2) > 40;
+
+  it('keeps a painted terrain even when its share is zero', () => {
+    for (const seed of SEEDS) {
+      const map = generate(shares({ forest: 50, plains: 50 }), [at('desert')], seed);
+      expect(map.biome[CENTER]).toBe(Biome.Desert);
+      expect(map.distribution.shares.desert).toBeGreaterThan(0);
+    }
+  });
+
+  it('adds painted snow on top of the snow target instead of taking it from elsewhere', () => {
+    for (const seed of SEEDS) {
+      const target = shares({ forest: 50, plains: 50 }, 20);
+      const before = generate(target, [], seed);
+      const after = generate(target, [{ kind: 'snow', x: W / 2, y: H / 2 + 20 }], seed);
+      expect(after.distribution.snow).toBeGreaterThan(before.distribution.snow + 0.03);
+      for (let i = 0; i < W * H; i++) if (before.snow[i]) expect(after.snow[i]).toBe(1);
+    }
+  });
+
+  it('keeps painted snow when the target has no snow at all', () => {
+    const map = generate(shares({ plains: 1 }), [at('snow')]);
+    expect(map.snow[CENTER]).toBe(1);
+    expect(map.distribution.snow).toBeGreaterThan(0);
+  });
+
+  it('changes nothing outside the painted area', () => {
+    const target = shares({ mountains: 20, forest: 30, desert: 10, swamp: 10, plains: 30 }, 20);
+    for (const kind of ['snow', 'desert', 'swamp', 'forest', 'plains'] as const) {
+      const before = generate(target);
+      const after = generate(target, [at(kind)]);
+      for (let i = 0; i < W * H; i++) {
+        if (!farFromPaint(i)) continue;
+        expect(after.biome[i]).toBe(before.biome[i]);
+        expect(after.snow[i]).toBe(before.snow[i]);
+      }
+    }
+  });
+
+  it('keeps painted mountains when the mountain share is zero', () => {
+    for (const seed of SEEDS) {
+      const map = generate(shares({ plains: 1 }), [at('mountains')], seed);
+      expect(map.biome[CENTER]).toBe(Biome.Mountains);
+      expect(map.mountainLevel).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('keeps painted lowland where the shares would put mountains', () => {
+    for (const seed of SEEDS) {
+      expect(generate(shares({ mountains: 1 }), [at('plains')], seed).biome[CENTER]).toBe(Biome.Plains);
+      expect(generate(shares({ mountains: 1 }), [at('swamp')], seed).biome[CENTER]).toBe(Biome.Swamp);
+    }
+  });
+
+  it('keeps painted snow clear of swamp and desert even when they are the only terrains', () => {
+    for (const seed of SEEDS) {
+      const map = generate(shares({ swamp: 50, desert: 50 }), [at('snow')], seed);
+      expect(map.snow[CENTER]).toBe(1);
+      expect([Biome.Swamp, Biome.Desert]).not.toContain(map.biome[CENTER]);
+    }
+  });
+
+  it('lets the last of snow and swamp painted on a spot take it', () => {
+    const target = shares({ forest: 50, plains: 50 }, 30);
+    const snowLast = generate(target, [at('swamp'), at('snow')]);
+    expect(snowLast.snow[CENTER]).toBe(1);
+    expect(snowLast.biome[CENTER]).not.toBe(Biome.Swamp);
+    const swampLast = generate(target, [at('snow'), at('swamp')]);
+    expect(swampLast.snow[CENTER]).toBe(0);
+    expect(swampLast.biome[CENTER]).toBe(Biome.Swamp);
+  });
+
+  it('lets painted snow share a spot with painted forest and mountains', () => {
+    const target = shares({ plains: 1 });
+    const forest = generate(target, [at('forest'), at('snow')]);
+    expect(forest.biome[CENTER]).toBe(Biome.Taiga);
+    expect(forest.snow[CENTER]).toBe(1);
+    const peak = generate(target, [at('snow'), at('mountains')]);
+    expect(peak.biome[CENTER]).toBe(Biome.Mountains);
+    expect(peak.snow[CENTER]).toBe(1);
+  });
+
+  it('leaves no land without a terrain', () => {
+    const map = generate(shares({ swamp: 50, desert: 50 }, 100), [
+      at('snow'),
+      { kind: 'mountains', x: 60, y: 40 },
+    ]);
+    for (let i = 0; i < W * H; i++) expect(map.biome[i] === Biome.Water).toBe(map.field[i] <= 0);
+  });
+});
+
+describe('retarget', () => {
+  const fractions = (percent: Partial<TerrainShares>, snow = 0): TerrainDistribution => {
+    const d = shares(percent, snow);
+    for (const kind of TERRAIN_KINDS) d.shares[kind] /= 100;
+    return d;
+  };
+  const target = fractions({ forest: 50, plains: 50 }, 20);
+  // What the panel showed after the user painted a lot of snow and some desert.
+  const shown = fractions({ forest: 46, plains: 44, desert: 10 }, 35);
+
+  const expectSame = (actual: TerrainDistribution, wanted: TerrainDistribution) => {
+    for (const kind of TERRAIN_KINDS) expect(actual.shares[kind]).toBeCloseTo(wanted.shares[kind]);
+    expect(actual.snow).toBeCloseTo(wanted.snow);
+  };
+
+  it('leaves the target alone when the user edits nothing', () => {
+    expectSame(retarget(target, shown, shown), target);
+  });
+
+  it('moves the target by exactly what the user changed', () => {
+    const edited = fractions({ forest: 46, plains: 44, desert: 10 }, 50);
+    const next = retarget(target, shown, edited);
+    expectSame(next, { shares: target.shares, snow: 0.35 });
+  });
+
+  it('applies changes to terrain shares the same way', () => {
+    const edited = fractions({ forest: 26, plains: 44, desert: 10, swamp: 20 }, 35);
+    const next = retarget(target, shown, edited);
+    expect(next.shares.forest).toBeCloseTo(0.3);
+    expect(next.shares.swamp).toBeCloseTo(0.2);
+    expect(next.shares.plains).toBeCloseTo(0.5);
+    expect(next.snow).toBeCloseTo(0.2);
+  });
+
+  it('never goes below zero or above full snow', () => {
+    const next = retarget(target, shown, fractions({ plains: 100 }, 100));
+    expect(next.shares.forest).toBeCloseTo(0.04);
+    expect(next.shares.desert).toBe(0);
+    expect(next.snow).toBeCloseTo(0.85);
+    expect(retarget(target, shown, fractions({ plains: 100 }, 0)).snow).toBe(0);
+  });
+
+  it('takes the edited values as they are when there was no target yet', () => {
+    const edited = fractions({ desert: 70, plains: 30 }, 10);
+    expect(retarget(null, shown, edited)).toEqual(edited);
   });
 });

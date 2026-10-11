@@ -7,14 +7,7 @@ import {
   type TerrainDistribution,
 } from './distribution.ts';
 import { boxBlur, chamferDistance, clamp, percentile, sstep } from './grid.ts';
-import {
-  applyClimateHints,
-  applyElevationHints,
-  BRUSH_KINDS,
-  hintCoverage,
-  type BrushKind,
-  type TerrainHint,
-} from './hints.ts';
+import { applyClimateHints, applyElevationHints, paintedTerrain, type TerrainHint } from './hints.ts';
 import { buildLandField } from './landmask.ts';
 import { createNoise2D, fbm, ridged } from './noise.ts';
 import { carveRivers, type River } from './rivers.ts';
@@ -134,6 +127,7 @@ export function generateMap(
   // Levels come from the natural terrain, so asking for mountains in one place
   // does not take them away somewhere else.
   const levels = { low: lowLevel, hill: hillLevel, mountain: mountainLevel };
+  const naturalElevation = elevation.slice();
   applyElevationHints(hints, elevation, land, coastDist, levels, w, h, hintNoise);
 
   const baseMoisture = new Float32Array(n);
@@ -153,38 +147,38 @@ export function generateMap(
   const temperature = new Float32Array(n);
   const biome = new Uint8Array(n);
   const snow = new Uint8Array(n);
+  const naturalMoisture = new Float32Array(n);
+  const naturalTemperature = new Float32Array(n);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = y * w + x;
-      const e = elevation[i];
-      moisture[i] = clamp(
-        baseMoisture[i] + 0.25 * Math.exp(-riverDist[i] / 6) + 0.1 * Math.exp(-coastDist[i] / 8),
-        0,
-        1,
-      );
-      temperature[i] = clamp(
-        0.22 + 0.55 * (y / h) + 0.22 * fbm(tempNoise, x / 200, y / 200, 3) - 0.35 * Math.max(0, e - 0.45),
-        0,
-        1,
-      );
+      const coastal = baseMoisture[i] + 0.1 * Math.exp(-coastDist[i] / 8);
+      const sunny = 0.22 + 0.55 * (y / h) + 0.22 * fbm(tempNoise, x / 200, y / 200, 3);
+      moisture[i] = clamp(coastal + 0.25 * Math.exp(-riverDist[i] / 6), 0, 1);
+      temperature[i] = clamp(sunny - 0.35 * Math.max(0, elevation[i] - 0.45), 0, 1);
+      // Painted mountains reroute rivers and chill the air around them, so the
+      // unpainted climate leaves rivers out and uses the unpainted relief.
+      naturalMoisture[i] = clamp(coastal, 0, 1);
+      naturalTemperature[i] = clamp(sunny - 0.35 * Math.max(0, naturalElevation[i] - 0.45), 0, 1);
     }
   }
+  const natural = {
+    elevation: naturalElevation,
+    moisture: naturalMoisture,
+    temperature: naturalTemperature,
+    hillLevel,
+    mountainLevel,
+  };
   applyClimateHints(hints, moisture, temperature, w, h, hintNoise);
 
   const target = distribution && normalizeDistribution(distribution);
   if (target) {
-    const coverage: Partial<Record<BrushKind, Float32Array>> = {};
-    for (const kind of BRUSH_KINDS) {
-      const hinted = hintCoverage(hints, kind, w, h, hintNoise);
-      if (hinted) coverage[kind] = hinted;
-    }
     ({ hillLevel, mountainLevel } = distributeBiomes(
       target,
       land,
+      natural,
       elevation,
-      moisture,
-      temperature,
-      coverage,
+      paintedTerrain(hints, w, h, hintNoise),
       biome,
       snow,
     ));
