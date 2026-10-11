@@ -13,6 +13,8 @@ const KIND_LABEL: Record<StructureKind, string> = {
 export interface StructureMenuActions {
   /** The user wants to link this structure to another by road. */
   onRoad: () => void;
+  /** The user wants every road of this structure gone, leaving it isolated. */
+  onUnlink: () => void;
   onRename: (name: string) => void;
   onRetype: (kind: StructureKind) => void;
   onRemove: () => void;
@@ -20,7 +22,7 @@ export interface StructureMenuActions {
 
 /**
  * The small menu shown next to a selected structure: build a road from it,
- * rename it, change what it is, or remove it. Renaming and changing type open
+ * cut all its roads, rename it, change what it is, or remove it. Renaming and changing type open
  * a second step inside the same menu.
  */
 export class StructureMenu {
@@ -28,6 +30,7 @@ export class StructureMenu {
   private actions: StructureMenuActions;
   private name = '';
   private kind: StructureKind = 'village';
+  private roadCount = 0;
 
   constructor(root: HTMLElement, actions: StructureMenuActions) {
     this.root = root;
@@ -38,10 +41,11 @@ export class StructureMenu {
     return !this.root.hidden;
   }
 
-  /** Shows the menu for a structure with this name and kind. */
-  open(name: string, kind: StructureKind): void {
+  /** Shows the menu for a structure with this name and kind, linked by this many roads. */
+  open(name: string, kind: StructureKind, roadCount: number): void {
     this.name = name;
     this.kind = kind;
+    this.roadCount = roadCount;
     this.root.hidden = false;
     this.showActions();
   }
@@ -66,9 +70,13 @@ export class StructureMenu {
   }
 
   private showActions(): void {
+    const unlink = this.button('Remover ligações', () => this.actions.onUnlink());
+    // Nothing to remove on a structure no road reaches.
+    unlink.disabled = this.roadCount === 0;
     this.root.replaceChildren(
       this.title(this.name),
       this.button('Estrada até…', () => this.actions.onRoad()),
+      unlink,
       this.button('Renomear', () => this.showRename()),
       this.button('Mudar tipo', () => this.showKinds()),
       this.button('Remover', () => this.actions.onRemove(), 'danger'),

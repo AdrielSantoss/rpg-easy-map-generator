@@ -118,6 +118,10 @@ button:disabled {
   cursor: wait;
 }
 
+#structure-menu button:disabled {
+  cursor: default;
+}
+
 label {
   color: var(--muted);
   font-size: 0.85rem;

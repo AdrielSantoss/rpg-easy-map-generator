@@ -107,6 +107,17 @@ const structureMenu = new StructureMenu($('structure-menu'), {
     overlay.classList.add('linking');
     status.textContent = 'Clique na estrutura de destino da estrada (Esc cancela).';
   },
+  onUnlink: () => {
+    if (!selected) return;
+    const removed = roadsOf(selected);
+    roads = roads.filter((road) => !removed.includes(road));
+    undoStack.push(() => {
+      // Only roads whose two ends still exist can come back.
+      roads.push(...removed.filter((r) => structures.includes(r.from) && structures.includes(r.to)));
+    });
+    status.textContent = `${removed.length} estrada(s) removida(s). "${selected.name}" ficou sem ligações.`;
+    select(selected);
+  },
   onRename: (name) => {
     if (!selected) return;
     selected.name = name;
@@ -263,10 +274,14 @@ function select(structure: Structure | null): void {
   selected = structure;
   linkingFrom = null;
   overlay.classList.remove('linking');
-  if (structure) structureMenu.open(structure.name, structure.kind);
+  if (structure) structureMenu.open(structure.name, structure.kind, roadsOf(structure).length);
   else structureMenu.close();
   placeMenu();
   redrawOverlay();
+}
+
+function roadsOf(structure: Structure): Road[] {
+  return roads.filter((road) => road.from === structure || road.to === structure);
 }
 
 function removeStructure(structure: Structure): void {
