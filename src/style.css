@@ -118,7 +118,8 @@ button:disabled {
   cursor: wait;
 }
 
-.map-menu button:disabled {
+.map-menu button:disabled,
+#restore-regions:disabled {
   cursor: default;
 }
 

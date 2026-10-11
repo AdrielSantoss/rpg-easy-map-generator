@@ -2,9 +2,14 @@ export interface RegionMenuActions {
   onRename: (name: string) => void;
   /** Asks for another suggested name for the region being renamed. */
   suggest: () => string;
+  /** The user wants this region left without a name on the map. */
+  onRemove: () => void;
 }
 
-/** The small box shown when a region's name is clicked: type a new name or ask for another suggestion. */
+/**
+ * The small box shown when a region's name is clicked: type a new name, ask
+ * for another suggestion, or take the name off the map.
+ */
 export class RegionMenu {
   private root: HTMLElement;
   private actions: RegionMenuActions;
@@ -50,6 +55,7 @@ export class RegionMenu {
         input.value = this.actions.suggest();
         input.focus();
       }),
+      button('Excluir nome', () => this.actions.onRemove(), 'danger'),
     );
     this.root.hidden = false;
     input.focus();

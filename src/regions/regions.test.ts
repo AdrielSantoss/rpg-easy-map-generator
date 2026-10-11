@@ -162,6 +162,21 @@ describe('names chosen by the user', () => {
     expect(renamed.find((r) => r.kind === 'forest')!.name).toBe(forest.name);
   });
 
+  it('can be empty, which marks that one region as having its name removed', () => {
+    const removed = nameRegion([], forest, '', W);
+    const named = applyRegionNames(regions, removed, W);
+    expect(named.find((r) => r.kind === 'forest')!.name).toBe('');
+    expect(named.filter((r) => r.name === '')).toHaveLength(1);
+    expect(named).toHaveLength(regions.length);
+  });
+
+  it('bring a removed name back when the removal is replaced by a new name', () => {
+    const removed = nameRegion([], forest, '', W);
+    const renamed = nameRegion(removed, forest, 'De volta', W);
+    expect(renamed).toHaveLength(1);
+    expect(applyRegionNames(regions, renamed, W).find((r) => r.kind === 'forest')!.name).toBe('De volta');
+  });
+
   it('keep only the latest name for a region', () => {
     const first = nameRegion([], forest, 'Primeiro', W);
     const second = nameRegion(first, { ...forest, x: forest.x + 3 }, 'Segundo', W);

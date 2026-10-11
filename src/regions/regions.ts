@@ -29,7 +29,10 @@ export interface Region {
   size: number;
 }
 
-/** A name the user gave to the region labelled around this position. */
+/**
+ * A name the user gave to the region labelled around this position. An empty
+ * name means the user removed the label: that region is shown without one.
+ */
 export interface RegionName {
   kind: RegionKind;
   x: number;
@@ -253,7 +256,8 @@ function labelsOverlap(a: Region, b: Region): boolean {
 /**
  * Replaces suggested names with the ones the user chose. A chosen name follows
  * its region as long as the label stays in roughly the same place, so painting
- * terrain or changing the seed a little does not lose it.
+ * terrain or changing the seed a little does not lose it. A region the user
+ * took the name off comes back with an empty name, for the caller to leave out.
  */
 export function applyRegionNames(
   regions: readonly Region[],

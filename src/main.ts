@@ -105,6 +105,8 @@ let showRegions = true;
 let shownRegions: Region[] = [];
 /** The region whose name is being edited. */
 let editingRegion: Region | null = null;
+/** For each label in `shownRegions`, the region as it was found on the map (same order). */
+let shownSources: Region[] = [];
 /** Off for the ?demo pages, so trying the demo does not overwrite the user's saved map. */
 const autosave = !new URLSearchParams(location.search).has('demo');
 /** True while a saved project is being loaded, when the half-loaded state must not be saved. */
@@ -177,6 +179,18 @@ const regionMenu = new RegionMenu($('region-menu'), {
     redrawOverlay();
   },
   suggest: () => (editingRegion ? suggestRegionName(editingRegion.kind) : ''),
+  onRemove: () => {
+    if (!editingRegion) return;
+    const region = editingRegion;
+    const before = regionNames;
+    regionNames = nameRegion(regionNames, region, '', GRID_W);
+    undoStack.push(() => {
+      regionNames = before;
+    });
+    status.textContent = 'Nome excluído. "Restaurar nomes" traz de volta os que foram excluídos.';
+    closeRegionMenu();
+    redrawOverlay();
+  },
 });
 
 function randomSeed(): string {
@@ -185,14 +199,23 @@ function randomSeed(): string {
 
 /** The region labels to show: the user's names applied, moved clear of structures, or none when switched off. */
 function layoutRegions(): Region[] {
+  $<HTMLButtonElement>('restore-regions').disabled = !regionNames.some((chosen) => chosen.name === '');
+  shownSources = [];
   if (!showRegions) return [];
-  return dodge(applyRegionNames(foundRegions, regionNames, GRID_W), structures.map(structureFootprint));
+  // An empty name means the user took that region's name off the map.
+  const named = applyRegionNames(foundRegions, regionNames, GRID_W);
+  const kept = named.map((_, index) => index).filter((index) => named[index].name !== '');
+  shownSources = kept.map((index) => foundRegions[index]);
+  return dodge(
+    kept.map((index) => named[index]),
+    structures.map(structureFootprint),
+  );
 }
 
 function openRegionMenu(region: Region): void {
   // The user's names are filed under where the region was found, not where its
-  // label was moved to; the two lists are in the same order.
-  editingRegion = foundRegions[shownRegions.indexOf(region)] ?? region;
+  // label was moved to.
+  editingRegion = shownSources[shownRegions.indexOf(region)] ?? region;
   regionMenu.open(region.name);
   placeMenus();
 }
@@ -694,6 +717,11 @@ $('toggle-regions').addEventListener('click', () => {
   showRegions = !showRegions;
   $('toggle-regions').classList.toggle('active', showRegions);
   closeRegionMenu();
+  redrawOverlay();
+});
+$('restore-regions').addEventListener('click', () => {
+  regionNames = regionNames.filter((chosen) => chosen.name !== '');
+  status.textContent = 'Nomes excluídos restaurados.';
   redrawOverlay();
 });
 sketch.onChange = saveSoon;
