@@ -37,12 +37,17 @@ npm run build    # production build in dist/
 
 The site is hosted on Cloudflare Pages at https://rpg-easy-map-generator.pages.dev.
 
+Every push to `main` that passes the checks is published automatically by the CI workflow. It needs a
+`CLOUDFLARE_API_TOKEN` repository secret (a Cloudflare API token with the "Cloudflare Pages: Edit"
+permission); without it the workflow still checks and builds, and says that nothing was published.
+
+To publish from your own machine instead:
+
 ```bash
 npm run deploy   # checks, builds and uploads dist/ as the new production version
 ```
 
-This uploads the build directly; it is not triggered by pushing to GitHub. The first time on a machine,
-run `npx wrangler login` to authorize the Cloudflare account.
+The first time on a machine, run `npx wrangler login` to authorize the Cloudflare account.
 
 ## Project layout
 
