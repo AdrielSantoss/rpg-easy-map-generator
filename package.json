@@ -13,7 +13,8 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm run test"
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run test",
+    "deploy": "npm run check && npm run build && npx wrangler pages deploy dist --project-name rpg-easy-map-generator --branch main"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

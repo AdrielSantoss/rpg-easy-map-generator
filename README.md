@@ -2,6 +2,8 @@
 
 Sketch the outline of your continents and get a parchment-style tabletop RPG map.
 
+**Try it: https://rpg-easy-map-generator.pages.dev**
+
 Everything inside a closed outline becomes land and the rest becomes sea. The generator then adds
 mountains, hills, forests, deserts, swamps and rivers, and you can drop kingdoms, cities, villages and
 other landmarks on the result with a click. It all runs in the browser.
@@ -30,6 +32,17 @@ npm run dev      # http://localhost:5173 (add ?demo to open on a sample map)
 npm run check    # typecheck, lint, format check and tests
 npm run build    # production build in dist/
 ```
+
+## Deployment
+
+The site is hosted on Cloudflare Pages at https://rpg-easy-map-generator.pages.dev.
+
+```bash
+npm run deploy   # checks, builds and uploads dist/ as the new production version
+```
+
+This uploads the build directly; it is not triggered by pushing to GitHub. The first time on a machine,
+run `npx wrangler login` to authorize the Cloudflare account.
 
 ## Project layout
 
