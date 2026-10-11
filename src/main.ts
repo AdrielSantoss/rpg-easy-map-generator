@@ -30,7 +30,13 @@ import { renderMap } from './render/parchment.ts';
 import { drawRegions } from './render/regions.ts';
 import { drawRoads } from './render/roads.ts';
 import { drawSelection, drawStructures } from './render/structures.ts';
-import { structureAt, structureFootprint, type Structure, type StructureKind } from './structures/model.ts';
+import {
+  STRUCTURE_KINDS,
+  structureAt,
+  structureFootprint,
+  type Structure,
+  type StructureKind,
+} from './structures/model.ts';
 import { suggestName } from './structures/names.ts';
 import { distanceToRoad, findRoad, markRoad, planNetwork, type RoadPath } from './structures/roads.ts';
 import { DistributionPanel } from './ui/distribution.ts';
@@ -69,6 +75,9 @@ const NO_ROUTE: RoadPath = { cells: new Int32Array(0), points: new Float32Array(
 const STORAGE_KEY = 'rpg-easy-map-generator:project';
 /** How long (ms) after the last change the project is saved and becomes an undo step. */
 const SAVE_DELAY = 200;
+
+const isStructureKind = (tool: MapTool): tool is StructureKind =>
+  (STRUCTURE_KINDS as readonly string[]).includes(tool ?? '');
 
 const isTerrainKind = (tool: MapTool): tool is BrushKind =>
   (BRUSH_KINDS as readonly string[]).includes(tool ?? '');
@@ -141,6 +150,10 @@ overlay.width = GRID_W * VIEW_SCALE;
 overlay.height = GRID_H * VIEW_SCALE;
 
 const brush = $('brush');
+const ghost = $<HTMLCanvasElement>('ghost');
+/** Side of the square the ghost is drawn in, in cells: room for the largest icon. */
+const GHOST_CELLS = 60;
+ghost.width = ghost.height = GHOST_CELLS * DETAIL_SCALE;
 const zoomReset = $('zoom-reset');
 const zoom = new ZoomController($('stage'), $('viewport'), {
   // With no tool the left button pans, unless it is about to click a structure, a region name or a menu.
@@ -433,6 +446,17 @@ function setMapTool(tool: MapTool): void {
   for (const button of paletteButtons) {
     button.classList.toggle('active', button.dataset.tool === tool);
   }
+  // The ghost of the structure about to be placed appears once the cursor is over the map.
+  ghost.hidden = true;
+  if (isStructureKind(tool)) {
+    const ctx = ghost.getContext('2d')!;
+    ctx.clearRect(0, 0, ghost.width, ghost.height);
+    drawStructures(
+      ctx,
+      [{ kind: tool, x: GHOST_CELLS / 2, y: (GHOST_CELLS * 2) / 3, name: '' }],
+      DETAIL_SCALE,
+    );
+  }
   overlay.classList.toggle('painting', isTerrainKind(tool));
   overlay.classList.toggle('placing', tool !== null && tool !== 'remove' && !isTerrainKind(tool));
   brush.hidden = true;
@@ -706,6 +730,12 @@ function onMapPointerMove(e: PointerEvent): void {
     // The ring shows the part of the dab where the terrain clearly takes hold.
     brush.style.width = `${((2 * hintCoreRadius({ radius: brushRadius })) / GRID_W) * 100}%`;
   }
+  // With a structure in hand its ghost follows the cursor, greyed out over
+  // water, and steps aside over a structure that the click would select instead.
+  ghost.hidden = !isStructureKind(mapTool) || linkingFrom !== null || structureAt(structures, x, y) !== null;
+  ghost.style.left = `${(x / GRID_W) * 100}%`;
+  ghost.style.top = `${(y / GRID_H) * 100}%`;
+  ghost.classList.toggle('invalid', currentMap !== null && !isLand(currentMap, x, y));
   // Show a hand over what a click would open: a structure's menu or a region's name.
   const opensMenu =
     !isTerrainKind(mapTool) &&
@@ -805,6 +835,7 @@ overlay.addEventListener('pointerup', onMapPointerUp);
 overlay.addEventListener('pointercancel', onMapPointerUp);
 overlay.addEventListener('pointerleave', () => {
   brush.hidden = true;
+  ghost.hidden = true;
 });
 $('connect-all').addEventListener('click', connectAll);
 $('clear-hints').addEventListener('click', () => {

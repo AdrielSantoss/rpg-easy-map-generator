@@ -477,6 +477,28 @@ button.danger {
   display: none;
 }
 
+/* A see-through copy of the structure about to be placed, carried by the cursor. */
+.stage #ghost {
+  inset: auto;
+  width: 10%;
+  height: auto;
+  aspect-ratio: 1;
+  /* The structure's base point, two thirds of the way down, sits on the cursor. */
+  translate: -50% -66.667%;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.stage #ghost[hidden] {
+  display: none;
+}
+
+/* Over water, where it cannot be placed. */
+.stage #ghost.invalid {
+  opacity: 0.35;
+  filter: grayscale(1);
+}
+
 #overlay.painting {
   cursor: crosshair;
 }
