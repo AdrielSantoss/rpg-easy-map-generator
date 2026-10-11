@@ -58,8 +58,12 @@ export class RegionMenu {
       button('Excluir nome', () => this.actions.onRemove(), 'danger'),
     );
     this.root.hidden = false;
-    input.focus();
-    input.select();
+    // The menu opens on a press of the mouse button, and the browser moves the
+    // focus to whatever was pressed right after: take it back once that is done.
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    });
   }
 
   close(): void {

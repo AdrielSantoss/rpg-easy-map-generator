@@ -23,6 +23,7 @@ import {
   regionKindAt,
   suggestRegionName,
   type Region,
+  type RegionKind,
   type RegionName,
 } from './regions/regions.ts';
 import { drawBrushTrail, TERRAIN_COLOR } from './render/hints.ts';
@@ -76,7 +77,7 @@ const STORAGE_KEY = 'rpg-easy-map-generator:project';
 /** How long (ms) after the last change the project is saved and becomes an undo step. */
 const SAVE_DELAY = 200;
 
-const isStructureKind = (tool: MapTool): tool is StructureKind =>
+const isStructureKind = (tool: string | null): tool is StructureKind =>
   (STRUCTURE_KINDS as readonly string[]).includes(tool ?? '');
 
 const isTerrainKind = (tool: MapTool): tool is BrushKind =>
@@ -154,6 +155,23 @@ const ghost = $<HTMLCanvasElement>('ghost');
 /** Side of the square the ghost is drawn in, in cells: room for the largest icon. */
 const GHOST_CELLS = 60;
 ghost.width = ghost.height = GHOST_CELLS * DETAIL_SCALE;
+/** What the ghost canvas currently shows, so it is repainted only when that changes. */
+let ghostShows = '';
+/** The word standing in for the name about to be written. */
+const GHOST_NAME = 'Nome';
+
+/** Paints what the cursor is about to put on the map: a structure, or a name in the lettering of `kind`. */
+function paintGhost(what: StructureKind | RegionKind): void {
+  if (ghostShows === what) return;
+  ghostShows = what;
+  const ctx = ghost.getContext('2d')!;
+  ctx.clearRect(0, 0, ghost.width, ghost.height);
+  // Both are anchored where the cursor is: the middle, two thirds of the way down.
+  const x = GHOST_CELLS / 2;
+  const y = (GHOST_CELLS * 2) / 3;
+  if (isStructureKind(what)) drawStructures(ctx, [{ kind: what, x, y, name: '' }], DETAIL_SCALE);
+  else drawRegions(ctx, [makeLabel(what, x, y, GHOST_NAME, GRID_W)], DETAIL_SCALE);
+}
 const zoomReset = $('zoom-reset');
 const zoom = new ZoomController($('stage'), $('viewport'), {
   // With no tool the left button pans, unless it is about to click a structure, a region name or a menu.
@@ -446,17 +464,11 @@ function setMapTool(tool: MapTool): void {
   for (const button of paletteButtons) {
     button.classList.toggle('active', button.dataset.tool === tool);
   }
-  // The ghost of the structure about to be placed appears once the cursor is over the map.
+  // A menu left open belongs to the tool that was in hand before.
+  if (selected || editingRegion || linkingFrom) select(null);
+  // The ghost of what is about to be placed appears once the cursor is over the map.
   ghost.hidden = true;
-  if (isStructureKind(tool)) {
-    const ctx = ghost.getContext('2d')!;
-    ctx.clearRect(0, 0, ghost.width, ghost.height);
-    drawStructures(
-      ctx,
-      [{ kind: tool, x: GHOST_CELLS / 2, y: (GHOST_CELLS * 2) / 3, name: '' }],
-      DETAIL_SCALE,
-    );
-  }
+  if (isStructureKind(tool)) paintGhost(tool);
   overlay.classList.toggle('painting', isTerrainKind(tool));
   overlay.classList.toggle('placing', tool !== null && tool !== 'remove' && !isTerrainKind(tool));
   brush.hidden = true;
@@ -730,12 +742,22 @@ function onMapPointerMove(e: PointerEvent): void {
     // The ring shows the part of the dab where the terrain clearly takes hold.
     brush.style.width = `${((2 * hintCoreRadius({ radius: brushRadius })) / GRID_W) * 100}%`;
   }
-  // With a structure in hand its ghost follows the cursor, greyed out over
-  // water, and steps aside over a structure that the click would select instead.
-  ghost.hidden = !isStructureKind(mapTool) || linkingFrom !== null || structureAt(structures, x, y) !== null;
+  // With a structure or the name tool in hand, a ghost of what the click would
+  // place follows the cursor. It steps aside over something the click would
+  // open instead: a structure, or with the name tool an existing name.
+  const inside = x >= 0 && y >= 0 && x < GRID_W && y < GRID_H;
+  const writing = mapTool === 'label';
+  const opens = structureAt(structures, x, y) !== null || (writing && regionAt(shownRegions, x, y) !== null);
+  ghost.hidden =
+    !(isStructureKind(mapTool) || writing) || linkingFrom !== null || opens || !inside || !currentMap;
   ghost.style.left = `${(x / GRID_W) * 100}%`;
   ghost.style.top = `${(y / GRID_H) * 100}%`;
-  ghost.classList.toggle('invalid', currentMap !== null && !isLand(currentMap, x, y));
+  if (!ghost.hidden && currentMap) {
+    // A name takes the lettering of the terrain under it and can go anywhere; a
+    // structure cannot go in water, and is greyed out there.
+    if (writing) paintGhost(regionKindAt(currentMap.biome[Math.floor(y) * GRID_W + Math.floor(x)]));
+    ghost.classList.toggle('invalid', !writing && !isLand(currentMap, x, y));
+  }
   // Show a hand over what a click would open: a structure's menu or a region's name.
   const opensMenu =
     !isTerrainKind(mapTool) &&
