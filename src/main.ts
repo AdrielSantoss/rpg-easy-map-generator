@@ -44,6 +44,7 @@ import { DistributionPanel } from './ui/distribution.ts';
 import { RegionMenu } from './ui/region-menu.ts';
 import { SketchBoard, type Tool } from './ui/sketch.ts';
 import { StructureMenu } from './ui/structure-menu.ts';
+import { initTavernScreen } from './ui/tavern-screen.ts';
 import { ZoomController } from './ui/zoom.ts';
 
 /** Simulation grid; the sketch canvas (1200×800) is twice this. */
@@ -866,6 +867,8 @@ $('clear-hints').addEventListener('click', () => {
   generate();
 });
 document.addEventListener('keydown', (e) => {
+  // These shortcuts belong to the world map.
+  if (document.body.dataset.screen !== 'world') return;
   if (e.key === 'Escape' && (selected || linkingFrom || editingRegion)) {
     if (linkingFrom) status.textContent = 'Estrada cancelada.';
     select(null);
@@ -938,6 +941,28 @@ seedInput.value = randomSeed();
 // ?demo&hints also paints some terrain, and
 // ?demo&shares applies a custom terrain distribution.
 const params = new URLSearchParams(location.search);
+
+// The generators live side by side, one screen each; the last one used is shown again next time.
+const SCREEN_KEY = 'rpg-easy-map-generator:screen';
+const screenTabs = [...document.querySelectorAll<HTMLElement>('.tabs [data-screen]')];
+function showScreen(screen: string): void {
+  document.body.dataset.screen = screen;
+  for (const tab of screenTabs) tab.classList.toggle('active', tab.dataset.screen === screen);
+  try {
+    localStorage.setItem(SCREEN_KEY, screen);
+  } catch {
+    // Storage blocked: the choice just is not remembered.
+  }
+}
+for (const tab of screenTabs) tab.addEventListener('click', () => showScreen(tab.dataset.screen ?? 'world'));
+initTavernScreen($('tavern-screen'));
+try {
+  const last = params.get('screen') ?? localStorage.getItem(SCREEN_KEY);
+  if (last === 'tavern') showScreen('tavern');
+} catch {
+  // Storage blocked: start on the world map.
+}
+
 if (!params.has('demo')) {
   // Pick up where the user left off in this browser.
   let saved: string | null = null;

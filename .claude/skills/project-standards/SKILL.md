@@ -5,9 +5,10 @@ description: Architecture, coding and testing standards for the RPG Easy Map Gen
 
 # Project standards
 
-A browser-only TypeScript app (Vite, Canvas 2D, no backend, no runtime dependencies). The user sketches
-continent outlines; the app turns them into a parchment-style tabletop RPG map and lets the user place
-settlements on it. The product goal is an **easy** map generator: every feature must work with one or two
+A browser-only TypeScript app (Vite, Canvas 2D, no backend, no runtime dependencies) with one screen per
+generator, switched by tabs. On the world map screen the user sketches continent outlines; the app turns
+them into a parchment-style tabletop RPG map and lets the user place settlements on it. The tavern screen
+needs no sketch: it generates a tavern interior as a battle map on a 5-foot grid. The product goal is an **easy** map generator: every feature must work with one or two
 clicks and sensible automatic results. Prefer generating a good default over adding an option.
 
 ## Language
@@ -24,15 +25,16 @@ src/
   structures/  Pure model for user-placed structures: kinds, hit testing, name suggestions.
   regions/     Pure naming of map features: seas, landmasses, forests, mountain ranges.
   project/     Pure save format: turning the user's work into text and back, validated.
+  tavern/      Pure tavern interiors on a 5-foot battle grid: rooms, doors, furniture.
   view/        Pure zoom and pan math for the map frame.
-  render/      Canvas 2D painting: parchment map and structure icons.
+  render/      Canvas 2D painting: the world map and what goes on it, and the tavern battle map.
   ui/          DOM widgets: sketch board, sliders, zoom, structure and region menus.
   testing/     Helpers shared by tests. Never imported by app code.
   main.ts      Wires the DOM to the modules above. The only file that reads the page.
 ```
 
 Dependencies point one way: `main.ts` → `ui`, `render` → the pure folders (`project`, `regions`,
-`structures`, `view`, `generator`). Nothing in a pure folder may touch `document`, `window` or a canvas.
+`structures`, `tavern`, `view`, `generator`). Nothing in a pure folder may touch `document`, `window` or a canvas.
 That keeps them testable in Node, so put logic there and keep `render/`, `ui/` and `main.ts` thin.
 
 ## Core rules

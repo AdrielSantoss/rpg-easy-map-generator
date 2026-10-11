@@ -6,13 +6,20 @@
     <title>Gerador de Mapas de RPG</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
-  <body data-mode="sketch">
+  <body data-mode="sketch" data-screen="world">
     <header>
       <h1>Gerador de Mapas de RPG</h1>
-      <p>Desenhe o contorno dos continentes. O que ficar fechado vira terra, o resto vira mar.</p>
+      <nav class="tabs">
+        <button data-screen="world" class="active" title="Desenhe os continentes e gere o mapa do mundo">
+          Mapa do mundo
+        </button>
+        <button data-screen="tavern" title="Gere o interior de uma taverna, já na grade de combate">
+          Taverna
+        </button>
+      </nav>
     </header>
 
-    <main class="layout">
+    <main class="layout" id="world-screen">
       <aside class="panel">
         <section class="sketch-only">
           <h2>Desenho</h2>
@@ -132,6 +139,46 @@
           <input id="file-input" type="file" accept=".json,application/json" hidden />
           <button id="new-project" class="danger" title="Apaga tudo e começa do zero">Novo mapa</button>
           <p class="hint">O trabalho é salvo sozinho neste navegador.</p>
+        </section>
+      </aside>
+    </main>
+
+    <main class="layout" id="tavern-screen">
+      <aside class="panel">
+        <section>
+          <h2>Tamanho</h2>
+          <button data-tavern-size="small" title="Um salão, cozinha e despensa">Pequena</button>
+          <button data-tavern-size="medium" title="Com quartos de hóspedes e escada">Média</button>
+          <button data-tavern-size="large" title="Mais quartos, mais mesas e um palco">Grande</button>
+        </section>
+        <section>
+          <h2>Exibir</h2>
+          <button id="tavern-grid" title="Grade de combate: cada quadrado vale 1,5 m (5 pés)">Grade</button>
+          <button id="tavern-labels">Nomes dos cômodos</button>
+        </section>
+      </aside>
+
+      <div class="tavern-center">
+        <canvas id="tavern-canvas"></canvas>
+        <p id="tavern-status" class="status" role="status" aria-live="polite"></p>
+      </div>
+
+      <aside class="panel">
+        <section>
+          <h2>Taverna</h2>
+          <label for="tavern-seed">Seed</label>
+          <input id="tavern-seed" type="text" spellcheck="false" autocomplete="off" />
+          <button id="tavern-reroll" class="primary" title="Sorteia outra taverna do mesmo tamanho">
+            Nova taverna
+          </button>
+        </section>
+        <section>
+          <button
+            id="tavern-export"
+            title="Salva a imagem a 70 pixels por quadrado, pronta para mesas virtuais"
+          >
+            Exportar PNG
+          </button>
         </section>
       </aside>
     </main>

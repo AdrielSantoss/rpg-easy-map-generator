@@ -6,7 +6,11 @@ Everything inside a closed outline becomes land and the rest becomes sea. The ge
 mountains, hills, forests, deserts, swamps and rivers, and you can drop kingdoms, cities, villages and
 other landmarks on the result with a click. It all runs in the browser.
 
-## How it works
+A second tab generates **tavern interiors** as battle maps on the 5-foot D&D grid: pick a size and get a
+common room with a bar, fireplace and tables, a kitchen, a storeroom and, in the larger sizes, guest rooms,
+stairs and a stage. The picture exports at 70 pixels per square, ready for a virtual tabletop.
+
+## How the world map works
 
 1. **Sketch**: draw the coastlines on the board. Small gaps are closed for you, and an outline drawn inside
    a continent becomes a lake.
@@ -32,9 +36,12 @@ npm run build    # production build in dist/
 ```
 src/
   generator/   Pure map generation: land mask, elevation, rivers, biomes
-  structures/  Model and name suggestions for user-placed structures
+  structures/  Model, name suggestions and roads for user-placed structures
+  regions/     Names for seas, landmasses, forests, mountain ranges
+  tavern/      Tavern interior generation on a battle grid
+  project/     Save format and undo history
   render/      Canvas painting of the map and structure icons
-  ui/          The sketch board
+  ui/          Sketch board, menus, sliders and the tavern screen
   main.ts      Wires the page together
 ```
 
