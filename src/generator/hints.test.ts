@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { ringSketch } from '../testing/shapes.ts';
 import {
+  BRUSH_KINDS,
   HINT_RADIUS,
   hintAt,
   hintWeight,
   TERRAIN_KINDS,
+  type BrushKind,
   type TerrainHint,
   type TerrainKind,
 } from './hints.ts';
@@ -19,7 +21,8 @@ const flat = () => 0;
 
 const generate = (hints: TerrainHint[], seed = 'aldoria') =>
   generateMap(ringSketch(W, H, 38), W, H, seed, { hints })!;
-const hintAtCenter = (kind: TerrainKind): TerrainHint => ({ kind, x: CX, y: CY });
+const hintAtCenter = (kind: BrushKind): TerrainHint => ({ kind, x: CX, y: CY });
+const SEEDS = ['aldoria', 'another', 'third'];
 
 describe('hintWeight', () => {
   const hint = hintAtCenter('forest');
@@ -64,23 +67,56 @@ describe('terrain hints', () => {
     desert: [Biome.Desert],
     swamp: [Biome.Swamp],
     plains: [Biome.Plains],
-    // Snow keeps whatever relief is underneath, so it is checked by temperature below.
-    tundra: [Biome.Tundra, Biome.Hills, Biome.Mountains],
   };
 
   for (const kind of TERRAIN_KINDS) {
     it(`turns the hinted spot into ${kind}, whatever the seed put there`, () => {
-      for (const seed of ['aldoria', 'another', 'third']) {
+      for (const seed of SEEDS) {
         const map = generate([hintAtCenter(kind)], seed);
         expect(expected[kind]).toContain(map.biome[CENTER]);
       }
     });
   }
 
-  it('makes the hinted spot freezing for tundra', () => {
-    expect(generate([hintAtCenter('tundra')]).temperature[CENTER]).toBeLessThan(0.22);
+  it('covers the hinted spot with snow, whatever the seed put there', () => {
+    for (const seed of SEEDS) expect(generate([hintAtCenter('snow')], seed).snow[CENTER]).toBe(1);
   });
 
+  for (const [kind, biomes] of [
+    ['mountains', [Biome.Mountains]],
+    ['forest', [Biome.Taiga]],
+    ['plains', [Biome.Plains]],
+  ] as const) {
+    it(`lets snow and ${kind} share a spot, whichever was painted first`, () => {
+      for (const seed of SEEDS) {
+        for (const hints of [
+          [hintAtCenter(kind), hintAtCenter('snow')],
+          [hintAtCenter('snow'), hintAtCenter(kind)],
+        ]) {
+          const map = generate(hints, seed);
+          expect(biomes).toContain(map.biome[CENTER]);
+          expect(map.snow[CENTER]).toBe(1);
+        }
+      }
+    });
+  }
+
+  for (const [kind, biome] of [
+    ['swamp', Biome.Swamp],
+    ['desert', Biome.Desert],
+  ] as const) {
+    it(`never mixes snow with ${kind}: whichever is painted last takes the spot`, () => {
+      for (const seed of SEEDS) {
+        const snowLast = generate([hintAtCenter(kind), hintAtCenter('snow')], seed);
+        expect(snowLast.snow[CENTER]).toBe(1);
+        expect(snowLast.biome[CENTER]).not.toBe(biome);
+
+        const snowFirst = generate([hintAtCenter('snow'), hintAtCenter(kind)], seed);
+        expect(snowFirst.snow[CENTER]).toBe(0);
+        expect(snowFirst.biome[CENTER]).toBe(biome);
+      }
+    });
+  }
   it('covers an area around the hint, not just one cell', () => {
     const map = generate([hintAtCenter('desert')]);
     for (const [dx, dy] of [
@@ -101,7 +137,7 @@ describe('terrain hints', () => {
 
   it('never moves the coast', () => {
     const plain = generate([]);
-    const hinted = generate(TERRAIN_KINDS.map((kind, k) => ({ kind, x: 45 + k * 12, y: CY })));
+    const hinted = generate(BRUSH_KINDS.map((kind, k) => ({ kind, x: 45 + k * 12, y: CY })));
     expect(hinted.field).toEqual(plain.field);
   });
 
@@ -113,7 +149,7 @@ describe('terrain hints', () => {
   });
 
   it('keeps layers within 0..1 and elevation at zero in the sea', () => {
-    const map = generate(TERRAIN_KINDS.map((kind, k) => ({ kind, x: 45 + k * 12, y: CY })));
+    const map = generate(BRUSH_KINDS.map((kind, k) => ({ kind, x: 45 + k * 12, y: CY })));
     for (let i = 0; i < W * H; i++) {
       for (const layer of [map.elevation, map.moisture, map.temperature]) {
         expect(layer[i]).toBeGreaterThanOrEqual(0);

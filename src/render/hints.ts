@@ -1,13 +1,13 @@
-import { HINT_CORE_RADIUS, type TerrainHint, type TerrainKind } from '../generator/hints.ts';
+import { HINT_CORE_RADIUS, type BrushKind, type TerrainHint } from '../generator/hints.ts';
 
-/** The color that stands for each terrain in the editing UI. */
-export const TERRAIN_COLOR: Record<TerrainKind, string> = {
+/** The color that stands for each terrain, and for snow, in the editing UI. */
+export const TERRAIN_COLOR: Record<BrushKind, string> = {
   mountains: 'rgb(166, 130, 100)',
   forest: 'rgb(92, 144, 70)',
   desert: 'rgb(222, 178, 78)',
   swamp: 'rgb(88, 138, 126)',
-  tundra: 'rgb(178, 208, 228)',
   plains: 'rgb(176, 198, 104)',
+  snow: 'rgb(178, 208, 228)',
 };
 
 /**

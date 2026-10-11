@@ -1,4 +1,4 @@
-import { Biome } from './biome.ts';
+import { Biome, canHoldSnow, SNOW_LINE } from './biome.ts';
 import {
   conformClimate,
   distributeBiomes,
@@ -10,10 +10,10 @@ import { boxBlur, chamferDistance, clamp, percentile, sstep } from './grid.ts';
 import {
   applyClimateHints,
   applyElevationHints,
+  BRUSH_KINDS,
   hintCoverage,
-  TERRAIN_KINDS,
+  type BrushKind,
   type TerrainHint,
-  type TerrainKind,
 } from './hints.ts';
 import { buildLandField } from './landmask.ts';
 import { createNoise2D, fbm, ridged } from './noise.ts';
@@ -33,13 +33,16 @@ export interface MapData {
   moisture: Float32Array;
   /** 0 (cold, top of the map) .. 1 (hot). */
   temperature: Float32Array;
+  /** Base terrain of each cell (see Biome). */
   biome: Uint8Array;
+  /** 1 where the land is under snow. Snow lies on top of the biome, never on swamp or desert. */
+  snow: Uint8Array;
   coastDist: Float32Array;
   riverDist: Float32Array;
   rivers: River[];
   hillLevel: number;
   mountainLevel: number;
-  /** Share of the land each terrain ended up covering. */
+  /** Share of the land each terrain, and snow, ended up covering. */
   distribution: TerrainDistribution;
 }
 
@@ -149,6 +152,7 @@ export function generateMap(
   const moisture = new Float32Array(n);
   const temperature = new Float32Array(n);
   const biome = new Uint8Array(n);
+  const snow = new Uint8Array(n);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = y * w + x;
@@ -169,8 +173,8 @@ export function generateMap(
 
   const target = distribution && normalizeDistribution(distribution);
   if (target) {
-    const coverage: Partial<Record<TerrainKind, Float32Array>> = {};
-    for (const kind of TERRAIN_KINDS) {
+    const coverage: Partial<Record<BrushKind, Float32Array>> = {};
+    for (const kind of BRUSH_KINDS) {
       const hinted = hintCoverage(hints, kind, w, h, hintNoise);
       if (hinted) coverage[kind] = hinted;
     }
@@ -182,10 +186,11 @@ export function generateMap(
       temperature,
       coverage,
       biome,
+      snow,
     ));
     // Biomes no longer follow the climate thresholds, so bring the climate to
     // them and soften the seams that leaves between neighboring biomes.
-    conformClimate(biome, moisture, temperature);
+    conformClimate(biome, snow, moisture, temperature);
     moisture.set(boxBlur(moisture, w, h, CLIMATE_BLUR));
     temperature.set(boxBlur(temperature, w, h, CLIMATE_BLUR));
   } else {
@@ -196,11 +201,12 @@ export function generateMap(
       if (!land[i]) biome[i] = Biome.Water;
       else if (e >= mountainLevel) biome[i] = Biome.Mountains;
       else if (e >= hillLevel) biome[i] = Biome.Hills;
-      else if (t < 0.22) biome[i] = Biome.Tundra;
       else if (t > 0.62 && m < 0.42) biome[i] = Biome.Desert;
       else if (m > 0.7 && e < lowLevel && t > 0.35) biome[i] = Biome.Swamp;
       else if (m > 0.54) biome[i] = t < 0.4 ? Biome.Taiga : Biome.Forest;
       else biome[i] = Biome.Plains;
+      // Swamp and desert only form where it is warm, so they never meet the snow.
+      if (t < SNOW_LINE && canHoldSnow(biome[i])) snow[i] = 1;
     }
   }
 
@@ -213,11 +219,12 @@ export function generateMap(
     moisture,
     temperature,
     biome,
+    snow,
     coastDist,
     riverDist,
     rivers,
     hillLevel,
     mountainLevel,
-    distribution: measureDistribution(biome),
+    distribution: measureDistribution(biome, snow),
   };
 }

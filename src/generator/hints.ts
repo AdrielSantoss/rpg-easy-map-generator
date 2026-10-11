@@ -1,12 +1,17 @@
 import { clamp, sstep } from './grid.ts';
 import { fbm, type Noise2D } from './noise.ts';
 
-export const TERRAIN_KINDS = ['mountains', 'forest', 'desert', 'swamp', 'tundra', 'plains'] as const;
+/** The base terrains: every piece of land is exactly one of these. */
+export const TERRAIN_KINDS = ['mountains', 'forest', 'desert', 'swamp', 'plains'] as const;
 export type TerrainKind = (typeof TERRAIN_KINDS)[number];
 
-/** A marker the user dropped on the map saying "this area is <kind>". */
+/** What the brush can paint: a base terrain, or snow, which lies on top of one. */
+export const BRUSH_KINDS = [...TERRAIN_KINDS, 'snow'] as const;
+export type BrushKind = (typeof BRUSH_KINDS)[number];
+
+/** A dab of the terrain brush: "this area is <kind>". */
 export interface TerrainHint {
-  kind: TerrainKind;
+  kind: BrushKind;
   /** Position in grid cells. */
   x: number;
   y: number;
@@ -70,7 +75,7 @@ function forEachCell(
 /** How strongly each cell is hinted for `kind` (0..1), or null when no hint asks for it. */
 export function hintCoverage(
   hints: readonly TerrainHint[],
-  kind: TerrainKind,
+  kind: BrushKind,
   w: number,
   h: number,
   noise: Noise2D,
@@ -102,8 +107,8 @@ export function applyElevationHints(
   noise: Noise2D,
 ): void {
   for (const hint of hints) {
-    // Snow can lie on any terrain, so tundra leaves the relief alone.
-    if (hint.kind === 'tundra') continue;
+    // Snow lies on top of whatever is there, so it leaves the relief alone.
+    if (hint.kind === 'snow') continue;
     forEachCell(hint, w, h, noise, (i, weight, x, y) => {
       if (!land[i]) return;
       const e = elevation[i];
@@ -120,7 +125,11 @@ export function applyElevationHints(
   }
 }
 
-/** Pulls moisture and temperature toward what each hinted terrain needs. Later hints win. */
+/**
+ * Pulls moisture and temperature toward what each hinted terrain needs. Later
+ * hints win. Forest, plains and mountains keep whatever cold is there, so they
+ * can sit under snow; swamp and desert warm the ground and melt it.
+ */
 export function applyClimateHints(
   hints: readonly TerrainHint[],
   moisture: Float32Array,
@@ -138,7 +147,6 @@ export function applyClimateHints(
       switch (hint.kind) {
         case 'forest':
           wantM = 0.64;
-          wantT = clamp(t, 0.3, 0.6);
           break;
         case 'desert':
           wantM = 0.2;
@@ -148,12 +156,13 @@ export function applyClimateHints(
           wantM = 0.85;
           wantT = Math.max(t, 0.45);
           break;
-        case 'tundra':
+        case 'snow':
           wantT = 0.1;
           break;
         case 'plains':
           wantM = 0.4;
-          wantT = clamp(t, 0.3, 0.58);
+          // Capped only so that a dry plain does not turn into desert.
+          wantT = Math.min(t, 0.58);
           break;
         case 'mountains':
           return;

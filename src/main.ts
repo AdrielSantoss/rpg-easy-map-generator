@@ -1,5 +1,5 @@
 import type { TerrainDistribution } from './generator/distribution.ts';
-import { HINT_RADIUS, hintAt, TERRAIN_KINDS, type TerrainHint, type TerrainKind } from './generator/hints.ts';
+import { BRUSH_KINDS, HINT_RADIUS, hintAt, type BrushKind, type TerrainHint } from './generator/hints.ts';
 import { generateMap, type MapData } from './generator/index.ts';
 import { drawBrushTrail, TERRAIN_COLOR } from './render/hints.ts';
 import { renderMap } from './render/parchment.ts';
@@ -23,10 +23,10 @@ const SHARPEN_DELAY = 300;
 /** While dragging a terrain brush, a new dab is laid down every this many cells. */
 const BRUSH_SPACING = HINT_RADIUS * 0.5;
 
-type MapTool = StructureKind | TerrainKind | 'remove' | null;
+type MapTool = StructureKind | BrushKind | 'remove' | null;
 
-const isTerrainKind = (tool: MapTool): tool is TerrainKind =>
-  (TERRAIN_KINDS as readonly string[]).includes(tool ?? '');
+const isTerrainKind = (tool: MapTool): tool is BrushKind =>
+  (BRUSH_KINDS as readonly string[]).includes(tool ?? '');
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -44,7 +44,7 @@ const paletteButtons = [...document.querySelectorAll<HTMLElement>('[data-tool]')
 let currentMap: MapData | null = null;
 let structures: Structure[] = [];
 let hints: TerrainHint[] = [];
-/** Terrain shares the user asked for, in percent; null lets the climate decide. */
+/** Terrain shares and snow cover the user asked for; null lets the climate decide. */
 let distribution: TerrainDistribution | null = null;
 let mapTool: MapTool = null;
 /** Terrain dabs of the brush drag in progress; they reach the map when the button is released. */
@@ -334,14 +334,17 @@ if (params.has('demo')) {
   seedInput.value = params.get('demo') || 'demo';
   sketch.loadExample();
   if (params.has('shares')) {
-    distribution = { mountains: 10, forest: 15, desert: 35, swamp: 5, tundra: 20, plains: 15 };
+    distribution = {
+      shares: { mountains: 25, forest: 35, desert: 10, swamp: 5, plains: 25 },
+      snow: 0.45,
+    };
   }
   if (params.has('hints')) {
     hints = [
       { kind: 'desert', x: 190, y: 262 },
       { kind: 'forest', x: 185, y: 150 },
       { kind: 'mountains', x: 410, y: 235 },
-      { kind: 'tundra', x: 270, y: 110 },
+      { kind: 'snow', x: 270, y: 110 },
       { kind: 'swamp', x: 340, y: 285 },
     ];
   }

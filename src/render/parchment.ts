@@ -25,6 +25,7 @@ const RIPPLES = [
 
 const INK_CSS = 'rgb(58, 44, 30)';
 const PAPER_CSS = 'rgb(232, 215, 174)';
+const SNOW_CSS = 'rgb(246, 245, 238)';
 
 /**
  * Paints the map in an aged-parchment style. `scale` is canvas pixels per
@@ -139,10 +140,12 @@ interface Icon {
   y: number;
   biome: number;
   size: number;
+  /** Under snow: the icon is drawn in its snow-covered form. */
+  snowy: boolean;
 }
 
 function drawIcons(ctx: CanvasRenderingContext2D, map: MapData): void {
-  const { w, h, biome, elevation, coastDist, riverDist, mountainLevel } = map;
+  const { w, h, biome, snow, elevation, coastDist, riverDist, mountainLevel } = map;
   const rng = seededRng(map.seed + ':icons');
   const icons: Icon[] = [];
 
@@ -164,7 +167,7 @@ function drawIcons(ctx: CanvasRenderingContext2D, map: MapData): void {
         if (!keep || x >= w || y >= h) continue;
         const i = Math.floor(y) * w + Math.floor(x);
         if (biome[i] !== kind || coastDist[i] < coastGap || riverDist[i] < riverGap) continue;
-        icons.push({ x, y, biome: kind, size: size(i) });
+        icons.push({ x, y, biome: kind, size: size(i), snowy: snow[i] === 1 });
       }
     }
   };
@@ -182,24 +185,23 @@ function drawIcons(ctx: CanvasRenderingContext2D, map: MapData): void {
   scatter(Biome.Taiga, 3.2, 0.95, 1.5, 1.4, () => 3.6 + rng() * 1.1);
   scatter(Biome.Desert, 9, 0.8, 2, 2, () => 2 + rng());
   scatter(Biome.Swamp, 5.5, 0.9, 1.5, 1.5, () => 1.6 + rng() * 0.6);
-  scatter(Biome.Plains, 11, 0.45, 2, 1.5, () => 1.2 + rng() * 0.5);
-  scatter(Biome.Tundra, 9, 0.6, 2, 1.5, () => 1 + rng() * 0.6);
+  scatter(Biome.Plains, 10, 0.5, 2, 1.5, () => 1.2 + rng() * 0.5);
 
   // Painter's order: icons lower on the map overlap the ones behind them.
   icons.sort((a, b) => a.y - b.y);
   for (const icon of icons) {
     switch (icon.biome) {
       case Biome.Mountains:
-        drawMountain(ctx, icon.x, icon.y, icon.size, rng);
+        drawMountain(ctx, icon.x, icon.y, icon.size, rng, icon.snowy);
         break;
       case Biome.Hills:
-        drawHill(ctx, icon.x, icon.y, icon.size);
+        drawHill(ctx, icon.x, icon.y, icon.size, icon.snowy);
         break;
       case Biome.Forest:
         drawTree(ctx, icon.x, icon.y, icon.size);
         break;
       case Biome.Taiga:
-        drawPine(ctx, icon.x, icon.y, icon.size);
+        drawPine(ctx, icon.x, icon.y, icon.size, icon.snowy);
         break;
       case Biome.Desert:
         drawDune(ctx, icon.x, icon.y, icon.size);
@@ -208,16 +210,22 @@ function drawIcons(ctx: CanvasRenderingContext2D, map: MapData): void {
         drawReeds(ctx, icon.x, icon.y, icon.size, true);
         break;
       case Biome.Plains:
-        drawReeds(ctx, icon.x, icon.y, icon.size, false);
-        break;
-      case Biome.Tundra:
-        drawFrost(ctx, icon.x, icon.y, icon.size);
+        // A snowed-over plain shows drifts instead of grass.
+        if (icon.snowy) drawFrost(ctx, icon.x, icon.y, icon.size);
+        else drawReeds(ctx, icon.x, icon.y, icon.size, false);
         break;
     }
   }
 }
 
-function drawMountain(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, rng: Rng): void {
+function drawMountain(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  rng: Rng,
+  snowy: boolean,
+): void {
   const half = size * 0.65;
   const peakX = x + (rng() - 0.5) * half * 0.4;
   const peakY = y - size;
@@ -235,7 +243,7 @@ function drawMountain(ctx: CanvasRenderingContext2D, x: number, y: number, size:
   };
 
   slopes();
-  ctx.fillStyle = PAPER_CSS;
+  ctx.fillStyle = snowy ? SNOW_CSS : PAPER_CSS;
   ctx.fill();
 
   // Shaded face on the right of the ridge line.
@@ -245,7 +253,7 @@ function drawMountain(ctx: CanvasRenderingContext2D, x: number, y: number, size:
   ctx.lineTo(footX, y);
   ctx.lineTo(kneeX, kneeY);
   ctx.closePath();
-  ctx.fillStyle = 'rgba(72, 54, 36, 0.3)';
+  ctx.fillStyle = snowy ? 'rgba(74, 98, 120, 0.3)' : 'rgba(72, 54, 36, 0.3)';
   ctx.fill();
 
   ctx.strokeStyle = INK_CSS;
@@ -261,12 +269,12 @@ function drawMountain(ctx: CanvasRenderingContext2D, x: number, y: number, size:
   ctx.stroke();
 }
 
-function drawHill(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {
+function drawHill(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, snowy: boolean): void {
   const half = size * 1.25;
   ctx.beginPath();
   ctx.moveTo(x - half, y);
   ctx.bezierCurveTo(x - half * 0.5, y - size * 1.35, x + half * 0.5, y - size * 1.35, x + half, y);
-  ctx.fillStyle = PAPER_CSS;
+  ctx.fillStyle = snowy ? SNOW_CSS : PAPER_CSS;
   ctx.fill();
   ctx.strokeStyle = INK_CSS;
   ctx.lineWidth = 0.38;
@@ -304,7 +312,7 @@ function drawTree(ctx: CanvasRenderingContext2D, x: number, y: number, size: num
   ctx.stroke();
 }
 
-function drawPine(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {
+function drawPine(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, snowy: boolean): void {
   const half = size * 0.3;
   ctx.strokeStyle = INK_CSS;
   ctx.lineWidth = 0.3;
@@ -322,6 +330,18 @@ function drawPine(ctx: CanvasRenderingContext2D, x: number, y: number, size: num
   ctx.fill();
   ctx.lineWidth = 0.26;
   ctx.stroke();
+
+  if (snowy) {
+    // Snow resting on the upper half of the tree.
+    ctx.beginPath();
+    ctx.moveTo(x - half * 0.55, y - size * 0.57);
+    ctx.lineTo(x, y - size);
+    ctx.lineTo(x + half * 0.55, y - size * 0.57);
+    ctx.closePath();
+    ctx.fillStyle = SNOW_CSS;
+    ctx.fill();
+    ctx.stroke();
+  }
 }
 
 function drawDune(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {

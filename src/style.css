@@ -253,11 +253,17 @@ dialog p {
 }
 
 .slider-total {
-  margin: 14px 0 4px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
+  margin: 0 0 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
   color: var(--muted);
   font-size: 0.85rem;
+}
+
+.slider-note {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 
 .slider-total.off {
