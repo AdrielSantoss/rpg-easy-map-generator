@@ -1,12 +1,13 @@
 import { HINT_RADIUS, type TerrainHint, type TerrainKind } from '../generator/hints.ts';
 
-const COLOR: Record<TerrainKind, string> = {
-  mountains: 'rgb(134, 104, 78)',
-  forest: 'rgb(84, 128, 62)',
-  desert: 'rgb(214, 170, 72)',
-  swamp: 'rgb(84, 112, 104)',
-  tundra: 'rgb(170, 200, 222)',
-  plains: 'rgb(168, 190, 96)',
+/** The color that stands for each terrain in the editing UI. */
+export const TERRAIN_COLOR: Record<TerrainKind, string> = {
+  mountains: 'rgb(166, 130, 100)',
+  forest: 'rgb(92, 144, 70)',
+  desert: 'rgb(222, 178, 78)',
+  swamp: 'rgb(88, 138, 126)',
+  tundra: 'rgb(178, 208, 228)',
+  plains: 'rgb(176, 198, 104)',
 };
 
 /** Marker radius in cells. */
@@ -24,7 +25,7 @@ export function drawHintMarkers(
   ctx.save();
   ctx.scale(scale, scale);
   for (const hint of hints) {
-    ctx.strokeStyle = COLOR[hint.kind];
+    ctx.strokeStyle = TERRAIN_COLOR[hint.kind];
     ctx.lineWidth = 0.6;
     ctx.setLineDash([2.5, 2.5]);
     ctx.beginPath();
@@ -34,7 +35,7 @@ export function drawHintMarkers(
     ctx.setLineDash([]);
     ctx.beginPath();
     ctx.arc(hint.x, hint.y, HINT_MARKER_RADIUS, 0, Math.PI * 2);
-    ctx.fillStyle = COLOR[hint.kind];
+    ctx.fillStyle = TERRAIN_COLOR[hint.kind];
     ctx.fill();
     ctx.strokeStyle = 'rgb(255, 250, 235)';
     ctx.lineWidth = 0.9;

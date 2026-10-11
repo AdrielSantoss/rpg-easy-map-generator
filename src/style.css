@@ -124,8 +124,8 @@ label {
 }
 
 dialog {
-  width: min(360px, calc(100vw - 32px));
-  padding: 18px;
+  width: min(400px, calc(100vw - 32px));
+  padding: 22px;
   color: var(--text);
   background: var(--panel);
   border: 1px solid var(--border);
@@ -146,7 +146,7 @@ dialog h2 {
 }
 
 dialog p {
-  margin: 4px 0 14px;
+  margin: 4px 0 16px;
   color: var(--muted);
   font-size: 0.85rem;
 }
@@ -157,37 +157,112 @@ dialog p {
   margin-top: 12px;
 }
 
+/* Shows at a glance how the terrains split the land. */
+.share-bar {
+  display: flex;
+  height: 14px;
+  margin-bottom: 16px;
+  overflow: hidden;
+  background: #241f1b;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.share-bar span {
+  flex: 0 0 0;
+  transition: flex-grow 0.15s;
+}
+
 .slider-row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  column-gap: 8px;
+  margin-bottom: 12px;
   color: var(--text);
-}
-
-.slider-row .readout {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.slider-row input {
-  grid-column: 1 / -1;
-  margin: 2px 0 6px;
-  padding: 0;
-  border: none;
-  background: none;
-  accent-color: var(--accent);
+  font-size: 0.95rem;
   cursor: pointer;
 }
 
+.slider-row .swatch {
+  width: 10px;
+  height: 10px;
+  background: var(--color);
+  border-radius: 50%;
+}
+
+.slider-row .readout {
+  min-width: 3.2em;
+  padding: 1px 8px;
+  text-align: right;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  background: #241f1b;
+  border-radius: 999px;
+}
+
+.slider-row input {
+  --thumb: 18px;
+  /* Where the fill ends: under the middle of the thumb. */
+  --fill: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--value, 0));
+
+  grid-column: 1 / -1;
+  appearance: none;
+  height: 8px;
+  margin: 8px 0 0;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--color) var(--fill), #241f1b var(--fill));
+  cursor: pointer;
+}
+
+.slider-row input::-webkit-slider-thumb {
+  appearance: none;
+  width: var(--thumb);
+  height: var(--thumb);
+  background: var(--paper);
+  border: 3px solid var(--color);
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 50%);
+  transition: transform 0.1s;
+}
+
+.slider-row input::-moz-range-thumb {
+  box-sizing: border-box;
+  width: var(--thumb);
+  height: var(--thumb);
+  background: var(--paper);
+  border: 3px solid var(--color);
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 50%);
+}
+
+.slider-row input::-moz-range-track {
+  background: none;
+}
+
+.slider-row input:hover::-webkit-slider-thumb,
+.slider-row input:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+
+.slider-row input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
 .slider-total {
-  margin: 0 0 4px;
+  margin: 14px 0 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.85rem;
 }
 
 .slider-total.off {
   color: var(--accent);
 }
-
 /* The map takes all the room left between the panels, as tall as the window allows. */
 .center {
   flex: 0 1 auto;
