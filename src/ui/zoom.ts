@@ -6,8 +6,8 @@ const WHEEL_SPEED = 0.0015;
 const LINE_HEIGHT = 33;
 
 export interface ZoomOptions {
-  /** Whether dragging with the left button should pan right now (it may be drawing instead). */
-  canLeftDrag: () => boolean;
+  /** Whether this left-button press should pan (it may be drawing or clicking something instead). */
+  canLeftDrag: (e: PointerEvent) => boolean;
   onChange: (view: ViewTransform) => void;
 }
 
@@ -47,7 +47,7 @@ export class ZoomController {
     frame.addEventListener(
       'pointerdown',
       (e) => {
-        const pans = e.button === 1 || e.button === 2 || (e.button === 0 && canLeftDrag());
+        const pans = e.button === 1 || e.button === 2 || (e.button === 0 && canLeftDrag(e));
         if (!pans || this.view.scale === 1) return;
         e.preventDefault();
         e.stopPropagation();

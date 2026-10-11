@@ -313,6 +313,44 @@ dialog p {
   background: rgb(54 47 41 / 90%);
 }
 
+#structure-menu {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 150px;
+  padding: 8px;
+  background: rgb(54 47 41 / 96%);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 50%);
+}
+
+#structure-menu[hidden] {
+  display: none;
+}
+
+#structure-menu strong {
+  margin-bottom: 2px;
+  overflow: hidden;
+  font-size: 0.85rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#structure-menu button {
+  padding: 4px 8px;
+  font-size: 0.85rem;
+}
+
+button.danger {
+  color: #e2a08c;
+}
+
+#overlay.linking {
+  cursor: alias;
+}
+
 #zoom-reset[hidden] {
   display: none;
 }

@@ -3,11 +3,14 @@ import { BRUSH_KINDS, HINT_RADIUS, hintAt, type BrushKind, type TerrainHint } fr
 import { generateMap, type MapData } from './generator/index.ts';
 import { drawBrushTrail, TERRAIN_COLOR } from './render/hints.ts';
 import { renderMap } from './render/parchment.ts';
-import { drawStructures } from './render/structures.ts';
+import { drawRoads } from './render/roads.ts';
+import { drawSelection, drawStructures } from './render/structures.ts';
 import { structureAt, type Structure, type StructureKind } from './structures/model.ts';
 import { suggestName } from './structures/names.ts';
+import { distanceToRoad, findRoad, markRoad, type RoadPath } from './structures/roads.ts';
 import { DistributionPanel } from './ui/distribution.ts';
 import { SketchBoard, type Tool } from './ui/sketch.ts';
+import { StructureMenu } from './ui/structure-menu.ts';
 import { ZoomController } from './ui/zoom.ts';
 
 /** Simulation grid; the sketch canvas (1200×800) is twice this. */
@@ -24,6 +27,16 @@ const SHARPEN_DELAY = 300;
 const BRUSH_SPACING = HINT_RADIUS * 0.5;
 
 type MapTool = StructureKind | BrushKind | 'remove' | null;
+
+/** A road between two structures; it lives and dies with them. */
+interface Road {
+  from: Structure;
+  to: Structure;
+  path: RoadPath;
+}
+
+/** With the remove tool, a click this close (in cells) to a road picks it. */
+const ROAD_PICK_DISTANCE = 3;
 
 const isTerrainKind = (tool: MapTool): tool is BrushKind =>
   (BRUSH_KINDS as readonly string[]).includes(tool ?? '');
@@ -43,6 +56,11 @@ const paletteButtons = [...document.querySelectorAll<HTMLElement>('[data-tool]')
 
 let currentMap: MapData | null = null;
 let structures: Structure[] = [];
+let roads: Road[] = [];
+/** The structure whose menu is open. */
+let selected: Structure | null = null;
+/** The structure a road is being built from; the next structure clicked ends it. */
+let linkingFrom: Structure | null = null;
 let hints: TerrainHint[] = [];
 /**
  * Terrain shares and snow cover the user asked for; null lets the climate
@@ -66,14 +84,45 @@ overlay.height = GRID_H * VIEW_SCALE;
 const brush = $('brush');
 const zoomReset = $('zoom-reset');
 const zoom = new ZoomController($('stage'), $('viewport'), {
-  canLeftDrag: () => document.body.dataset.mode === 'map' && mapTool === null,
+  // With no tool the left button pans, unless it is about to click a structure or its menu.
+  canLeftDrag: (e) =>
+    document.body.dataset.mode === 'map' &&
+    mapTool === null &&
+    linkingFrom === null &&
+    !(e.target as Element).closest('#structure-menu') &&
+    !structureAt(structures, ...cellAt(e)),
   onChange: (view) => {
+    placeMenu();
     zoomReset.hidden = view.scale === 1;
     zoomReset.textContent = `Zoom ${Math.round(view.scale * 100)}% · ver tudo`;
     sharpenSoon();
   },
 });
 zoomReset.addEventListener('click', () => zoom.reset());
+
+const structureMenu = new StructureMenu($('structure-menu'), {
+  onRoad: () => {
+    linkingFrom = selected;
+    structureMenu.close();
+    overlay.classList.add('linking');
+    status.textContent = 'Clique na estrutura de destino da estrada (Esc cancela).';
+  },
+  onRename: (name) => {
+    if (!selected) return;
+    selected.name = name;
+    select(selected);
+  },
+  onRetype: (kind) => {
+    if (!selected) return;
+    selected.kind = kind;
+    select(selected);
+  },
+  onRemove: () => {
+    if (!selected) return;
+    status.textContent = `"${selected.name}" removido.`;
+    removeStructure(selected);
+  },
+});
 
 function randomSeed(): string {
   return Math.random().toString(36).slice(2, 8);
@@ -110,7 +159,13 @@ function isLand(map: MapData, x: number, y: number): boolean {
 function redrawOverlay(): void {
   const ctx = overlay.getContext('2d')!;
   ctx.clearRect(0, 0, overlay.width, overlay.height);
+  drawRoads(
+    ctx,
+    roads.map((road) => road.path),
+    paintedScale,
+  );
   drawStructures(ctx, structures, paintedScale);
+  if (selected) drawSelection(ctx, selected, paintedScale);
   if (stroke) drawBrushTrail(ctx, stroke, paintedScale);
 }
 
@@ -163,6 +218,10 @@ function generate(): Promise<void> {
         const before = structures.length;
         structures = structures.filter((s) => isLand(map, s.x, s.y));
         const lost = before - structures.length;
+        roads = roads.filter((road) => structures.includes(road.from) && structures.includes(road.to));
+        if (selected && !structures.includes(selected)) select(null);
+        // The terrain changed under the roads, so they find their way again.
+        const lostRoads = routeRoads();
         // Fast repaint first; the sharp one follows if the user is zoomed in.
         paintMap(VIEW_SCALE);
         distributionPanel.show(map.distribution);
@@ -172,7 +231,8 @@ function generate(): Promise<void> {
         const seconds = ((performance.now() - started) / 1000).toFixed(1);
         status.textContent =
           `Mapa gerado em ${seconds}s (seed "${seed}", ${map.rivers.length} rios).` +
-          (lost ? ` ${lost} estrutura(s) ficaram no mar e foram removidas.` : '');
+          (lost ? ` ${lost} estrutura(s) ficaram no mar e foram removidas.` : '') +
+          (lostRoads ? ` ${lostRoads} estrada(s) ficaram sem caminho e foram removidas.` : '');
       } finally {
         generateButton.disabled = false;
         resolve();
@@ -187,41 +247,121 @@ function cellAt(e: PointerEvent): [number, number] {
   return [((e.clientX - rect.left) / rect.width) * GRID_W, ((e.clientY - rect.top) / rect.height) * GRID_H];
 }
 
+function placeMenu(): void {
+  if (!selected || !structureMenu.isOpen) return;
+  const frame = $('stage').getBoundingClientRect();
+  const rect = overlay.getBoundingClientRect();
+  const left = rect.left - frame.left + (selected.x / GRID_W) * rect.width + 16;
+  const top = rect.top - frame.top + (selected.y / GRID_H) * rect.height - 30;
+  const menu = $('structure-menu');
+  menu.style.left = `${Math.min(Math.max(8, left), frame.width - menu.offsetWidth - 8)}px`;
+  menu.style.top = `${Math.min(Math.max(8, top), frame.height - menu.offsetHeight - 8)}px`;
+}
+
+/** Selects a structure and opens its menu, or clears the selection with null. */
+function select(structure: Structure | null): void {
+  selected = structure;
+  linkingFrom = null;
+  overlay.classList.remove('linking');
+  if (structure) structureMenu.open(structure.name, structure.kind);
+  else structureMenu.close();
+  placeMenu();
+  redrawOverlay();
+}
+
+function removeStructure(structure: Structure): void {
+  structures = structures.filter((s) => s !== structure);
+  roads = roads.filter((road) => road.from !== structure && road.to !== structure);
+  if (selected === structure) select(null);
+}
+
+/** Routes every road again on the current map. Returns how many no longer have a way through. */
+function routeRoads(): number {
+  if (!currentMap) return 0;
+  const used = new Uint8Array(GRID_W * GRID_H);
+  const kept: Road[] = [];
+  for (const road of roads) {
+    const path = findRoad(currentMap, road.from, road.to, used);
+    if (!path) continue;
+    markRoad(used, path);
+    kept.push({ ...road, path });
+  }
+  const lost = roads.length - kept.length;
+  roads = kept;
+  return lost;
+}
+
+function addRoad(from: Structure, to: Structure): void {
+  if (!currentMap) return;
+  if (roads.some((r) => (r.from === from && r.to === to) || (r.from === to && r.to === from))) {
+    status.textContent = `"${from.name}" e "${to.name}" já estão ligados por estrada.`;
+    return;
+  }
+  const used = new Uint8Array(GRID_W * GRID_H);
+  for (const road of roads) markRoad(used, road.path);
+  const path = findRoad(currentMap, from, to, used);
+  if (!path) {
+    status.textContent = `Não há caminho por terra entre "${from.name}" e "${to.name}".`;
+    return;
+  }
+  const road: Road = { from, to, path };
+  roads.push(road);
+  undoStack.push(() => {
+    roads = roads.filter((other) => other !== road);
+  });
+  status.textContent = `Estrada criada entre "${from.name}" e "${to.name}".`;
+}
+
 function onMapPointerDown(e: PointerEvent): void {
-  if (!currentMap || !mapTool || e.button !== 0 || generateButton.disabled) return;
+  if (!currentMap || e.button !== 0 || generateButton.disabled) return;
   const [x, y] = cellAt(e);
   const structure = structureAt(structures, x, y);
 
-  if (mapTool === 'remove') {
-    const hint = structure ? null : hintAt(hints, x, y);
+  if (linkingFrom) {
+    // Second click of "road to…": another structure ends the road, anything else cancels.
+    const from = linkingFrom;
+    select(null);
+    if (structure && structure !== from) addRoad(from, structure);
+    else status.textContent = 'Estrada cancelada.';
+  } else if (mapTool === 'remove') {
+    const road = structure ? undefined : roads.find((r) => distanceToRoad(r.path, x, y) < ROAD_PICK_DISTANCE);
+    const hint = structure || road ? null : hintAt(hints, x, y);
     if (structure) {
-      structures = structures.filter((s) => s !== structure);
+      removeStructure(structure);
       status.textContent = `"${structure.name}" removido.`;
+    } else if (road) {
+      roads = roads.filter((other) => other !== road);
+      status.textContent = 'Estrada removida.';
     } else if (hint) {
       hints = hints.filter((other) => other !== hint);
       generate();
     }
-  } else if (!isLand(currentMap, x, y)) {
-    status.textContent = 'Clique em terra firme.';
   } else if (isTerrainKind(mapTool)) {
-    // Start a brush stroke; it is applied when the button is released.
-    overlay.setPointerCapture(e.pointerId);
-    stroke = [{ kind: mapTool, x, y }];
+    select(null);
+    if (!isLand(currentMap, x, y)) {
+      status.textContent = 'Clique em terra firme.';
+    } else {
+      // Start a brush stroke; it is applied when the button is released.
+      overlay.setPointerCapture(e.pointerId);
+      stroke = [{ kind: mapTool, x, y }];
+    }
   } else if (structure) {
-    // Clicking an existing structure renames it instead of stacking another on top.
-    const name = prompt('Nome da estrutura:', structure.name)?.trim();
-    if (name) structure.name = name;
+    // Clicking a structure selects it; its menu holds what can be done with it.
+    select(structure);
   } else {
+    select(null);
+    if (!mapTool) return;
+    if (!isLand(currentMap, x, y)) {
+      status.textContent = 'Clique em terra firme.';
+      return;
+    }
     const placed: Structure = { kind: mapTool, x, y, name: suggestName(mapTool) };
     structures.push(placed);
-    undoStack.push(() => {
-      structures = structures.filter((s) => s !== placed);
-    });
-    status.textContent = `"${placed.name}" adicionado. Clique nele para renomear.`;
+    undoStack.push(() => removeStructure(placed));
+    status.textContent = `"${placed.name}" adicionado. Clique nele para ver as opções.`;
   }
   redrawOverlay();
 }
-
 function onMapPointerMove(e: PointerEvent): void {
   const [x, y] = cellAt(e);
   if (isTerrainKind(mapTool)) {
@@ -254,7 +394,13 @@ function exportPng(): void {
   if (!currentMap) return;
   const canvas = document.createElement('canvas');
   renderMap(canvas, currentMap, EXPORT_SCALE);
-  drawStructures(canvas.getContext('2d')!, structures, EXPORT_SCALE);
+  const ctx = canvas.getContext('2d')!;
+  drawRoads(
+    ctx,
+    roads.map((road) => road.path),
+    EXPORT_SCALE,
+  );
+  drawStructures(ctx, structures, EXPORT_SCALE);
   const seed = currentMap.seed;
   canvas.toBlob((blob) => {
     if (!blob) return;
@@ -272,6 +418,7 @@ $('undo').addEventListener('click', () => sketch.undo());
 $('clear').addEventListener('click', () => sketch.clear());
 $('example').addEventListener('click', () => sketch.loadExample());
 $('back').addEventListener('click', () => {
+  select(null);
   setMode('sketch');
   status.textContent = '';
 });
@@ -324,6 +471,11 @@ $('clear-hints').addEventListener('click', () => {
   generate();
 });
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && (selected || linkingFrom)) {
+    if (linkingFrom) status.textContent = 'Estrada cancelada.';
+    select(null);
+    return;
+  }
   if (!(e.ctrlKey || e.metaKey) || e.key !== 'z' || e.target === seedInput) return;
   e.preventDefault();
   if (document.body.dataset.mode === 'sketch') {
@@ -373,18 +525,5 @@ if (params.has('demo')) {
       if (currentMap && isLand(currentMap, x, y)) structures.push({ kind, x, y, name: suggestName(kind) });
     }
     redrawOverlay();
-    if (params.has('dialog')) $('open-distribution').click();
-    if (params.has('zoom')) {
-      // Same event a real mouse wheel sends, aimed at the middle of the map.
-      const rect = $('stage').getBoundingClientRect();
-      $('stage').dispatchEvent(
-        new WheelEvent('wheel', {
-          deltaY: -700,
-          clientX: rect.left + rect.width * 0.45,
-          clientY: rect.top + rect.height * 0.55,
-          cancelable: true,
-        }),
-      );
-    }
   });
 }

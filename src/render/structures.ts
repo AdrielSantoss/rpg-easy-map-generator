@@ -220,3 +220,17 @@ const ICONS: Record<StructureKind, IconPainter> = {
     doorway(ctx, x, y, 1.5, 1.6);
   },
 };
+
+/** Editing aid, not part of the map: a ring around the structure the user has selected. */
+export function drawSelection(ctx: CanvasRenderingContext2D, structure: Structure, scale: number): void {
+  const height = ICON_HEIGHT[structure.kind];
+  ctx.save();
+  ctx.scale(scale, scale);
+  ctx.strokeStyle = 'rgb(201, 150, 63)';
+  ctx.lineWidth = 0.8;
+  ctx.setLineDash([2.2, 1.6]);
+  ctx.beginPath();
+  ctx.arc(structure.x, structure.y - height * 0.4, height * 0.75 + 2, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
