@@ -842,9 +842,15 @@ const brushSize = $<HTMLInputElement>('brush-size');
 brushSize.min = String(MIN_HINT_RADIUS);
 brushSize.max = String(MAX_HINT_RADIUS);
 brushSize.value = String(brushRadius);
-brushSize.addEventListener('input', () => {
+const showBrushSize = () => {
   brushRadius = Number(brushSize.value);
-});
+  const share = (brushRadius - MIN_HINT_RADIUS) / (MAX_HINT_RADIUS - MIN_HINT_RADIUS);
+  // Drives the filled part of the track in CSS.
+  brushSize.style.setProperty('--value', String(share));
+  $('brush-size-value').textContent = `${Math.round(share * 100)}%`;
+};
+brushSize.addEventListener('input', showBrushSize);
+showBrushSize();
 sketch.onChange = saveSoon;
 seedInput.addEventListener('input', saveSoon);
 

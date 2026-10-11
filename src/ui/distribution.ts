@@ -77,6 +77,7 @@ export class DistributionPanel {
     readout.className = 'readout';
     const slider = document.createElement('input');
     slider.type = 'range';
+    slider.className = 'slider';
     slider.min = '0';
     slider.max = '100';
     slider.step = '1';

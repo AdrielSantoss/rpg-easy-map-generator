@@ -205,15 +205,20 @@ dialog p {
   border-radius: 999px;
 }
 
-.slider-row input {
+.slider-row input.slider {
+  grid-column: 1 / -1;
+  margin: 8px 0 0;
+}
+
+/* A range input drawn as a filled track with a round handle. Set --color, and --value from 0 to 1. */
+input.slider {
   --thumb: 18px;
   /* Where the fill ends: under the middle of the thumb. */
   --fill: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--value, 0));
 
-  grid-column: 1 / -1;
   appearance: none;
   height: 8px;
-  margin: 8px 0 0;
+  margin: 0;
   padding: 0;
   border: none;
   border-radius: 999px;
@@ -221,7 +226,7 @@ dialog p {
   cursor: pointer;
 }
 
-.slider-row input::-webkit-slider-thumb {
+input.slider::-webkit-slider-thumb {
   appearance: none;
   width: var(--thumb);
   height: var(--thumb);
@@ -232,7 +237,7 @@ dialog p {
   transition: transform 0.1s;
 }
 
-.slider-row input::-moz-range-thumb {
+input.slider::-moz-range-thumb {
   box-sizing: border-box;
   width: var(--thumb);
   height: var(--thumb);
@@ -242,16 +247,16 @@ dialog p {
   box-shadow: 0 1px 4px rgb(0 0 0 / 50%);
 }
 
-.slider-row input::-moz-range-track {
+input.slider::-moz-range-track {
   background: none;
 }
 
-.slider-row input:hover::-webkit-slider-thumb,
-.slider-row input:active::-webkit-slider-thumb {
+input.slider:hover::-webkit-slider-thumb,
+input.slider:active::-webkit-slider-thumb {
   transform: scale(1.15);
 }
 
-.slider-row input:focus-visible {
+input.slider:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 4px;
 }
@@ -262,6 +267,23 @@ dialog p {
   border-bottom: 1px solid var(--border);
   color: var(--muted);
   font-size: 0.85rem;
+}
+
+/* Tools of one family, two to a row so the panel fits a laptop screen. */
+.tool-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.tool-grid button {
+  padding: 6px 2px;
+  font-size: 0.85rem;
+}
+
+/* An odd one out at the end takes the whole row. */
+.tool-grid button:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
 }
 
 .panel .pair {
@@ -380,12 +402,64 @@ button.danger {
   background-size: 40px 40px;
 }
 
-#brush-size {
-  padding: 0;
-  border: none;
-  background: none;
-  accent-color: var(--accent);
-  cursor: pointer;
+.brush-size {
+  margin: 6px 0 4px;
+  padding: 8px 8px 10px;
+  background: #2d2722;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.brush-size-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.brush-size-head label {
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
+.brush-size-head .readout {
+  padding: 1px 7px;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  background: #241f1b;
+  border-radius: 999px;
+}
+
+/* A small dot and a large one mark which end of the slider is which. */
+.brush-size-track {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.brush-size-track input {
+  --color: var(--accent);
+  --thumb: 16px;
+
+  flex: 1;
+  min-width: 0;
+  height: 6px;
+}
+
+.brush-size-track .dot {
+  flex: none;
+  border: 1.5px dashed var(--muted);
+  border-radius: 50%;
+}
+
+.brush-size-track .dot.small {
+  width: 6px;
+  height: 6px;
+}
+
+.brush-size-track .dot.large {
+  width: 16px;
+  height: 16px;
 }
 
 /* Follows the cursor to show how much ground a terrain brush covers. */

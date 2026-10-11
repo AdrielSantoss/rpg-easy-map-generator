@@ -24,27 +24,40 @@
         </section>
         <section class="map-only">
           <h2>Terreno</h2>
-          <button data-tool="mountains">Montanha</button>
-          <button data-tool="forest">Floresta</button>
-          <button data-tool="desert">Deserto</button>
-          <button data-tool="swamp">Pântano</button>
-          <button data-tool="snow" title="Cobre de neve o terreno que estiver embaixo">Neve</button>
-          <button data-tool="plains">Planície</button>
-          <label for="brush-size">Tamanho do pincel</label>
-          <input id="brush-size" type="range" step="2" title="Quanto terreno cada pincelada cobre" />
+          <div class="tool-grid">
+            <button data-tool="mountains">Montanha</button>
+            <button data-tool="forest">Floresta</button>
+            <button data-tool="desert">Deserto</button>
+            <button data-tool="swamp">Pântano</button>
+            <button data-tool="snow" title="Cobre de neve o terreno que estiver embaixo">Neve</button>
+            <button data-tool="plains">Planície</button>
+          </div>
+          <div class="brush-size" title="Quanto terreno cada pincelada cobre">
+            <div class="brush-size-head">
+              <label for="brush-size">Pincel</label>
+              <span id="brush-size-value" class="readout"></span>
+            </div>
+            <div class="brush-size-track">
+              <span class="dot small"></span>
+              <input id="brush-size" class="slider" type="range" step="2" />
+              <span class="dot large"></span>
+            </div>
+          </div>
           <button id="clear-hints" title="Desfaz tudo o que foi pintado e volta ao terreno natural">
             Limpar pintura
           </button>
         </section>
         <section class="map-only">
           <h2>Estruturas</h2>
-          <button data-tool="kingdom">Reino</button>
-          <button data-tool="city">Cidade</button>
-          <button data-tool="village">Vila</button>
-          <button data-tool="tower">Torre</button>
-          <button data-tool="port">Porto</button>
-          <button data-tool="ruins">Ruínas</button>
-          <button data-tool="dungeon">Masmorra</button>
+          <div class="tool-grid">
+            <button data-tool="kingdom">Reino</button>
+            <button data-tool="city">Cidade</button>
+            <button data-tool="village">Vila</button>
+            <button data-tool="tower">Torre</button>
+            <button data-tool="port">Porto</button>
+            <button data-tool="ruins">Ruínas</button>
+            <button data-tool="dungeon">Masmorra</button>
+          </div>
           <button id="connect-all" title="Cria estradas ligando todas as estruturas de cada continente">
             Ligar tudo
           </button>
