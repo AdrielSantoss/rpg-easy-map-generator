@@ -1,4 +1,4 @@
-import { HINT_CORE_RADIUS, type BrushKind, type TerrainHint } from '../generator/hints.ts';
+import { hintCoreRadius, type BrushKind, type TerrainHint } from '../generator/hints.ts';
 
 /** The color that stands for each terrain, and for snow, in the editing UI. */
 export const TERRAIN_COLOR: Record<BrushKind, string> = {
@@ -24,8 +24,9 @@ export function drawBrushTrail(
   // One path for the whole stroke, so overlapping dabs do not add up to a darker tint.
   ctx.beginPath();
   for (const dab of stroke) {
-    ctx.moveTo(dab.x + HINT_CORE_RADIUS, dab.y);
-    ctx.arc(dab.x, dab.y, HINT_CORE_RADIUS, 0, Math.PI * 2);
+    const radius = hintCoreRadius(dab);
+    ctx.moveTo(dab.x + radius, dab.y);
+    ctx.arc(dab.x, dab.y, radius, 0, Math.PI * 2);
   }
   ctx.globalAlpha = 0.45;
   ctx.fillStyle = TERRAIN_COLOR[stroke[0].kind];

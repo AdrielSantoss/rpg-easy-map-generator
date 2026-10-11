@@ -1,5 +1,14 @@
 import { normalizeDistribution, retarget, type TerrainDistribution } from './generator/distribution.ts';
-import { BRUSH_KINDS, HINT_RADIUS, hintAt, type BrushKind, type TerrainHint } from './generator/hints.ts';
+import {
+  BRUSH_KINDS,
+  HINT_RADIUS,
+  hintAt,
+  hintCoreRadius,
+  MAX_HINT_RADIUS,
+  MIN_HINT_RADIUS,
+  type BrushKind,
+  type TerrainHint,
+} from './generator/hints.ts';
 import { generateMap, type MapData } from './generator/index.ts';
 import { History } from './project/history.ts';
 import { parseProject, serializeProject, type Project } from './project/project.ts';
@@ -40,8 +49,8 @@ const DETAIL_SCALE = 4;
 const SHARPEN_ABOVE = 1.25;
 /** Wait this long (ms) after the last zoom step before the slow sharp repaint. */
 const SHARPEN_DELAY = 300;
-/** While dragging a terrain brush, a new dab is laid down every this many cells. */
-const BRUSH_SPACING = HINT_RADIUS * 0.5;
+/** While dragging a terrain brush, a new dab is laid down every this fraction of the brush's reach. */
+const BRUSH_SPACING = 0.5;
 
 type MapTool = StructureKind | BrushKind | 'label' | 'remove' | null;
 
@@ -93,6 +102,8 @@ let distribution: TerrainDistribution | null = null;
 /** What the distribution dialog showed when it was opened, to tell what the user changed. */
 let shownDistribution: TerrainDistribution | null = null;
 let mapTool: MapTool = null;
+/** How far each dab of the terrain brush reaches, in cells: the brush size the user picked. */
+let brushRadius = HINT_RADIUS;
 /** Terrain dabs of the brush drag in progress; they reach the map when the button is released. */
 let stroke: TerrainHint[] | null = null;
 /** Pixels per cell the map and overlay canvases are currently painted at. */
@@ -660,7 +671,7 @@ function onMapPointerDown(e: PointerEvent): void {
     } else {
       // Start a brush stroke; it is applied when the button is released.
       overlay.setPointerCapture(e.pointerId);
-      stroke = [{ kind: mapTool, x, y }];
+      stroke = [{ kind: mapTool, x, y, radius: brushRadius }];
     }
   } else if (structure) {
     // Clicking a structure selects it; its menu holds what can be done with it.
@@ -692,6 +703,8 @@ function onMapPointerMove(e: PointerEvent): void {
     brush.style.left = `${(x / GRID_W) * 100}%`;
     brush.style.top = `${(y / GRID_H) * 100}%`;
     brush.style.borderColor = TERRAIN_COLOR[mapTool];
+    // The ring shows the part of the dab where the terrain clearly takes hold.
+    brush.style.width = `${((2 * hintCoreRadius({ radius: brushRadius })) / GRID_W) * 100}%`;
   }
   // Show a hand over what a click would open: a structure's menu or a region's name.
   const opensMenu =
@@ -702,8 +715,8 @@ function onMapPointerMove(e: PointerEvent): void {
   overlay.classList.toggle('clickable', opensMenu);
   if (!stroke || !currentMap) return;
   const last = stroke[stroke.length - 1];
-  if (Math.hypot(x - last.x, y - last.y) < BRUSH_SPACING || !isLand(currentMap, x, y)) return;
-  stroke.push({ kind: last.kind, x, y });
+  if (Math.hypot(x - last.x, y - last.y) < BRUSH_SPACING * brushRadius || !isLand(currentMap, x, y)) return;
+  stroke.push({ kind: last.kind, x, y, radius: brushRadius });
   redrawOverlay();
 }
 
@@ -824,6 +837,13 @@ $('restore-regions').addEventListener('click', () => {
   regionNames = regionNames.filter((chosen) => chosen.name !== '');
   status.textContent = 'Nomes excluídos restaurados.';
   redrawOverlay();
+});
+const brushSize = $<HTMLInputElement>('brush-size');
+brushSize.min = String(MIN_HINT_RADIUS);
+brushSize.max = String(MAX_HINT_RADIUS);
+brushSize.value = String(brushRadius);
+brushSize.addEventListener('input', () => {
+  brushRadius = Number(brushSize.value);
 });
 sketch.onChange = saveSoon;
 seedInput.addEventListener('input', saveSoon);

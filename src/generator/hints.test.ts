@@ -4,6 +4,8 @@ import {
   BRUSH_KINDS,
   HINT_RADIUS,
   hintAt,
+  hintCoreRadius,
+  hintRadius,
   hintWeight,
   TERRAIN_KINDS,
   type BrushKind,
@@ -38,6 +40,39 @@ describe('hintWeight', () => {
     expect(near).toBeLessThan(1);
     expect(far).toBeGreaterThan(0);
     expect(far).toBeLessThan(near);
+  });
+});
+
+describe('brush size', () => {
+  const small = { ...hintAtCenter('forest'), radius: 10 };
+  const large = { ...hintAtCenter('forest'), radius: 60 };
+  const deserts = (hints: TerrainHint[]) =>
+    generate(hints).biome.reduce((n, b) => n + (b === Biome.Desert ? 1 : 0), 0);
+
+  it('sets how far a dab reaches', () => {
+    expect(hintWeight(small, CX + 12, CY, flat)).toBe(0);
+    expect(hintWeight(large, CX + 12, CY, flat)).toBe(1);
+    expect(hintWeight(large, CX + 61, CY, flat)).toBe(0);
+    expect(hintRadius(hintAtCenter('forest'))).toBe(HINT_RADIUS);
+  });
+
+  it('paints more ground with a larger brush', () => {
+    const painted = (radius: number) => deserts([{ kind: 'desert', x: CX, y: CY, radius }]);
+    expect(painted(10)).toBeGreaterThan(deserts([]));
+    expect(painted(30)).toBeGreaterThan(painted(10) * 3);
+  });
+
+  it('keeps a small dab small: ground beyond its reach is untouched', () => {
+    const map = generate([{ kind: 'desert', x: CX, y: CY, radius: 10 }]);
+    const natural = generate([]);
+    expect(map.biome[CENTER]).toBe(Biome.Desert);
+    expect(map.biome[CENTER + 20]).toBe(natural.biome[CENTER + 20]);
+  });
+
+  it('decides how close a click must be to pick the dab', () => {
+    expect(hintAt([small], CX + 12, CY)).toBeNull();
+    expect(hintAt([large], CX + 40, CY)).toBe(large);
+    expect(hintCoreRadius(large)).toBeGreaterThan(hintCoreRadius(small));
   });
 });
 

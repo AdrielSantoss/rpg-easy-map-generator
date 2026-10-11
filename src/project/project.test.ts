@@ -11,7 +11,7 @@ const project = (): Project => ({
   ],
   hints: [
     { kind: 'snow', x: 120, y: 80 },
-    { kind: 'desert', x: 300.5, y: 250 },
+    { kind: 'desert', x: 300.5, y: 250, radius: 55 },
   ],
   distribution: { shares: { mountains: 0.2, forest: 0.3, desert: 0.1, swamp: 0.1, plains: 0.3 }, snow: 0.25 },
   structures: [
@@ -92,6 +92,12 @@ describe('parseProject', () => {
     expect(tampered((d) => (d.roads = [[1, 1]]))).toBeNull();
     expect(tampered((d) => (d.roads = [[0, 0.5]]))).toBeNull();
     expect(tampered((d) => (d.roads = [[0]]))).toBeNull();
+  });
+
+  it('rejects a brush size outside what the app offers', () => {
+    expect(tampered((d) => ((d.hints as { radius: unknown }[])[1].radius = 5000))).toBeNull();
+    expect(tampered((d) => ((d.hints as { radius: unknown }[])[1].radius = 0))).toBeNull();
+    expect(tampered((d) => ((d.hints as { radius: unknown }[])[1].radius = 'big'))).toBeNull();
   });
 
   it('rejects a broken distribution', () => {

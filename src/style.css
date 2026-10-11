@@ -380,6 +380,14 @@ button.danger {
   background-size: 40px 40px;
 }
 
+#brush-size {
+  padding: 0;
+  border: none;
+  background: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 /* Follows the cursor to show how much ground a terrain brush covers. */
 #brush {
   position: absolute;

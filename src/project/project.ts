@@ -1,5 +1,11 @@
 import type { TerrainDistribution } from '../generator/distribution.ts';
-import { BRUSH_KINDS, TERRAIN_KINDS, type TerrainHint } from '../generator/hints.ts';
+import {
+  BRUSH_KINDS,
+  MAX_HINT_RADIUS,
+  MIN_HINT_RADIUS,
+  TERRAIN_KINDS,
+  type TerrainHint,
+} from '../generator/hints.ts';
 import { REGION_KINDS, type RegionName } from '../regions/regions.ts';
 import { STRUCTURE_KINDS, type Structure } from '../structures/model.ts';
 
@@ -112,7 +118,14 @@ export function parseProject(text: string): Project | null {
   }
   for (const hint of hints as unknown[]) {
     if (!isPlaced(hint) || !isOneOf(BRUSH_KINDS, hint.kind)) return null;
-    project.hints.push({ kind: hint.kind, x: hint.x, y: hint.y });
+    const dab: TerrainHint = { kind: hint.kind, x: hint.x, y: hint.y };
+    // Dabs saved before brush sizes existed have no radius and use the default.
+    if (hint.radius !== undefined) {
+      const { radius } = hint;
+      if (!isNumber(radius) || radius < MIN_HINT_RADIUS || radius > MAX_HINT_RADIUS) return null;
+      dab.radius = radius;
+    }
+    project.hints.push(dab);
   }
   for (const structure of structures as unknown[]) {
     if (!isPlaced(structure) || !isOneOf(STRUCTURE_KINDS, structure.kind) || !isText(structure.name)) {

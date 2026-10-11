@@ -15,23 +15,35 @@ export interface TerrainHint {
   /** Position in grid cells. */
   x: number;
   y: number;
+  /** How far the dab reaches, in cells: the brush size it was painted with. HINT_RADIUS when absent. */
+  radius?: number;
 }
 
-/** How far a hint reaches, in cells. It is at full strength over the inner ~45%. */
+/** How far a dab reaches by default, in cells. It is at full strength over the inner ~45%. */
 export const HINT_RADIUS = 30;
-/** How much (in cells) noise bends the edge of a hint, so areas don't come out as circles. */
-const EDGE_WOBBLE = 7;
+/** The smallest and largest brush the user can pick, as a dab's reach in cells. */
+export const MIN_HINT_RADIUS = 8;
+export const MAX_HINT_RADIUS = 80;
+/** How much noise bends the edge of a dab, as a fraction of its reach, so areas don't come out as circles. */
+const EDGE_WOBBLE = 7 / 30;
 
-/** Part of a hint's reach where its terrain clearly shows; a click there picks that hint. */
-export const HINT_CORE_RADIUS = HINT_RADIUS * 0.75;
+/** How far a dab reaches, in cells. */
+export function hintRadius(hint: Pick<TerrainHint, 'radius'>): number {
+  return hint.radius ?? HINT_RADIUS;
+}
+
+/** The part of a dab's reach where its terrain clearly shows; a click there picks that dab. */
+export function hintCoreRadius(hint: Pick<TerrainHint, 'radius'>): number {
+  return hintRadius(hint) * 0.75;
+}
 
 /** The hint whose terrain covers the given cell position, if any (the nearest when several do). */
 export function hintAt(hints: readonly TerrainHint[], x: number, y: number): TerrainHint | null {
   let best: TerrainHint | null = null;
-  let bestDist = HINT_CORE_RADIUS;
+  let bestDist = Infinity;
   for (const hint of hints) {
     const d = Math.hypot(hint.x - x, hint.y - y);
-    if (d < bestDist) {
+    if (d < hintCoreRadius(hint) && d < bestDist) {
       best = hint;
       bestDist = d;
     }
@@ -49,7 +61,8 @@ export interface ElevationLevels {
 /** Strength of a hint at a cell: 1 near its center, fading to 0 at its edge. */
 export function hintWeight(hint: TerrainHint, x: number, y: number, noise: Noise2D): number {
   const distance = Math.hypot(x + 0.5 - hint.x, y + 0.5 - hint.y);
-  return sstep(HINT_RADIUS, HINT_RADIUS * 0.45, distance + EDGE_WOBBLE * fbm(noise, x / 25, y / 25, 3));
+  const radius = hintRadius(hint);
+  return sstep(radius, radius * 0.45, distance + EDGE_WOBBLE * radius * fbm(noise, x / 25, y / 25, 3));
 }
 
 function forEachCell(
@@ -59,7 +72,7 @@ function forEachCell(
   noise: Noise2D,
   visit: (i: number, weight: number, x: number, y: number) => void,
 ): void {
-  const reach = HINT_RADIUS + EDGE_WOBBLE;
+  const reach = hintRadius(hint) * (1 + EDGE_WOBBLE);
   const x0 = Math.max(0, Math.floor(hint.x - reach));
   const x1 = Math.min(w - 1, Math.ceil(hint.x + reach));
   const y0 = Math.max(0, Math.floor(hint.y - reach));
