@@ -10,11 +10,14 @@ const INK: RGB = [58, 44, 30];
 const SHALLOW: RGB = [208, 208, 178];
 const DEEP: RGB = [181, 191, 168];
 const RIPPLE: RGB = [84, 104, 106];
+/** Open grassland: a light, yellowish green, paler than forest so the two stay apart. */
+const GRASS_WASH: RGB = [196, 206, 136];
 const FOREST_WASH: RGB = [172, 186, 124];
 /** Swamp ground: duller and greyer than forest, with darker stagnant patches. */
 const SWAMP_WASH: RGB = [146, 158, 134];
 const SWAMP_MURK: RGB = [104, 122, 110];
-const SAND_WASH: RGB = [240, 212, 142];
+/** Desert sand: a warm ochre, clearly not the green of the plains. */
+const SAND_WASH: RGB = [238, 204, 128];
 const ROCK_WASH: RGB = [198, 176, 142];
 const SNOW_WASH: RGB = [242, 240, 230];
 const SHORE_SHADE: RGB = [160, 126, 82];
@@ -62,13 +65,17 @@ function paintBase(ctx: CanvasRenderingContext2D, map: MapData, scale: number): 
   const data = img.data;
   const rng = seededRng(map.seed + ':paper');
   const paper = createNoise2D(rng);
-  // Biomes are per cell; blurring the swamp cells gives the wash a soft edge.
-  const bog = boxBlur(
-    Float32Array.from(map.biome, (b) => (b === Biome.Swamp ? 1 : 0)),
-    w,
-    h,
-    2,
-  );
+  // Biomes are per cell; blurring the cells of one gives its wash a soft edge.
+  const spread = (biome: number) =>
+    boxBlur(
+      Float32Array.from(map.biome, (b) => (b === biome ? 1 : 0)),
+      w,
+      h,
+      2,
+    );
+  const bog = spread(Biome.Swamp);
+  const grass = spread(Biome.Plains);
+  const sand = spread(Biome.Desert);
 
   for (let py = 0; py < H; py++) {
     const gy = (py + 0.5) / scale - 0.5;
@@ -101,13 +108,17 @@ function paintBase(ctx: CanvasRenderingContext2D, map: MapData, scale: number): 
         const m = sample(moisture);
         const t = sample(temperature);
         const high = sstep(hillLevel, mountainLevel, e);
+        mix(GRASS_WASH, 0.7 * sample(grass));
         mix(FOREST_WASH, 0.6 * sstep(0.46, 0.62, m) * (1 - high));
         const boggy = sample(bog);
         if (boggy > 0) {
           mix(SWAMP_WASH, 0.8 * boggy);
           mix(SWAMP_MURK, 0.45 * boggy * sstep(-0.1, 0.5, paper(gx / 7 + 31, gy / 7)));
         }
-        mix(SAND_WASH, 0.6 * sstep(0.56, 0.68, t) * sstep(0.48, 0.36, m) * (1 - high));
+        mix(
+          SAND_WASH,
+          Math.max(0.75 * sample(sand), 0.6 * sstep(0.56, 0.68, t) * sstep(0.48, 0.36, m) * (1 - high)),
+        );
         mix(ROCK_WASH, 0.55 * high);
         mix(SNOW_WASH, 0.75 * sstep(0.28, 0.16, t));
         mix(SHORE_SHADE, 0.24 * sstep(3.5, 0, f));
