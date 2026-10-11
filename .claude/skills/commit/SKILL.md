@@ -64,4 +64,6 @@ build: upgrade vite to 8.4
 
 - `main` is the default branch and must always pass CI.
 - Branch names: `<type>/<short-kebab-description>`, for example `feat/kingdom-borders`.
-- Commit and push only when the user asks. Never force-push `main`.
+- Commit at the end of every change, without waiting to be asked. A change is not finished until it is
+  committed.
+- Push only when the user asks. Never force-push `main`.
