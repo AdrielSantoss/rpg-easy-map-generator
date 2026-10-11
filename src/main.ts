@@ -30,6 +30,7 @@ const status = $('status');
 const generateButton = $<HTMLButtonElement>('generate');
 const toolButtons: Record<Tool, HTMLElement> = { pen: $('tool-pen'), eraser: $('tool-eraser') };
 const distributionPanel = new DistributionPanel($('distribution'));
+const distributionDialog = $<HTMLDialogElement>('distribution-dialog');
 const paletteButtons = [...document.querySelectorAll<HTMLElement>('[data-tool]')];
 
 let currentMap: MapData | null = null;
@@ -195,12 +196,20 @@ $('back').addEventListener('click', () => {
   status.textContent = '';
 });
 $('export').addEventListener('click', exportPng);
+$('open-distribution').addEventListener('click', () => {
+  // Start from what the map has now, discarding slider changes that were cancelled.
+  if (currentMap) distributionPanel.show(currentMap.distribution);
+  distributionDialog.showModal();
+});
+$('cancel-distribution').addEventListener('click', () => distributionDialog.close());
 $('apply-distribution').addEventListener('click', () => {
   distribution = distributionPanel.values;
+  distributionDialog.close();
   generate();
 });
 $('reset-distribution').addEventListener('click', () => {
   distribution = null;
+  distributionDialog.close();
   generate();
 });
 $('reroll').addEventListener('click', () => {
@@ -266,5 +275,6 @@ if (params.has('demo')) {
       if (currentMap && isLand(currentMap, x, y)) structures.push({ kind, x, y, name: suggestName(kind) });
     }
     redrawOverlay();
+    if (params.has('dialog')) $('open-distribution').click();
   });
 }

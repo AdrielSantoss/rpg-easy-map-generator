@@ -123,6 +123,40 @@ label {
   font-size: 0.85rem;
 }
 
+dialog {
+  width: min(360px, calc(100vw - 32px));
+  padding: 18px;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 16px 50px rgb(0 0 0 / 60%);
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+
+dialog h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+dialog p {
+  margin: 4px 0 14px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+}
+
 .slider-row {
   display: grid;
   grid-template-columns: 1fr auto;

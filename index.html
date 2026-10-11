@@ -66,17 +66,27 @@
           <button id="generate" class="primary">Gerar mapa</button>
         </section>
         <section class="map-only">
-          <h2>Distribuição do terreno</h2>
-          <div id="distribution"></div>
-          <button id="apply-distribution" title="Refaz o terreno com estes percentuais">Aplicar</button>
-          <button id="reset-distribution" title="Volta à distribuição natural do mapa">Automático</button>
-        </section>
-        <section class="map-only">
+          <button id="open-distribution" title="Define quantos % do mapa cada terreno ocupa">
+            Distribuição do terreno
+          </button>
           <button id="back">Editar esboço</button>
           <button id="export">Exportar PNG</button>
         </section>
       </aside>
     </main>
+
+    <dialog id="distribution-dialog" aria-labelledby="distribution-title">
+      <h2 id="distribution-title">Distribuição do terreno</h2>
+      <p>Quanto do continente cada terreno ocupa.</p>
+      <div id="distribution"></div>
+      <div class="dialog-actions">
+        <button id="reset-distribution" title="Volta à distribuição natural do mapa">Automático</button>
+        <button id="cancel-distribution">Cancelar</button>
+        <button id="apply-distribution" class="primary" title="Refaz o terreno com estes percentuais">
+          Aplicar
+        </button>
+      </div>
+    </dialog>
 
     <script type="module" src="/src/main.ts"></script>
   </body>
