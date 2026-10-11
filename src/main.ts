@@ -8,12 +8,18 @@ import { structureAt, type Structure, type StructureKind } from './structures/mo
 import { suggestName } from './structures/names.ts';
 import { DistributionPanel } from './ui/distribution.ts';
 import { SketchBoard, type Tool } from './ui/sketch.ts';
+import { ZoomController } from './ui/zoom.ts';
 
 /** Simulation grid; the sketch canvas (1200×800) is twice this. */
 const GRID_W = 600;
 const GRID_H = 400;
 const VIEW_SCALE = 2;
 const EXPORT_SCALE = 4;
+/** Resolution the map is repainted at once the user zooms in past SHARPEN_ABOVE. */
+const DETAIL_SCALE = 4;
+const SHARPEN_ABOVE = 1.25;
+/** Wait this long (ms) after the last zoom step before the slow sharp repaint. */
+const SHARPEN_DELAY = 300;
 
 type MapTool = StructureKind | TerrainKind | 'remove' | null;
 
@@ -41,9 +47,23 @@ let distribution: TerrainDistribution | null = null;
 let mapTool: MapTool = null;
 /** Undo steps for things placed on the map, most recent last. */
 const undoStack: (() => void)[] = [];
+/** Pixels per cell the map and overlay canvases are currently painted at. */
+let paintedScale = VIEW_SCALE;
+let sharpenTimer = 0;
 
 overlay.width = GRID_W * VIEW_SCALE;
 overlay.height = GRID_H * VIEW_SCALE;
+
+const zoomReset = $('zoom-reset');
+const zoom = new ZoomController($('stage'), $('viewport'), {
+  canLeftDrag: () => document.body.dataset.mode === 'map' && mapTool === null,
+  onChange: (view) => {
+    zoomReset.hidden = view.scale === 1;
+    zoomReset.textContent = `Zoom ${Math.round(view.scale * 100)}% · ver tudo`;
+    sharpenSoon();
+  },
+});
+zoomReset.addEventListener('click', () => zoom.reset());
 
 function randomSeed(): string {
   return Math.random().toString(36).slice(2, 8);
@@ -77,9 +97,28 @@ function isLand(map: MapData, x: number, y: number): boolean {
 function redrawOverlay(): void {
   const ctx = overlay.getContext('2d')!;
   ctx.clearRect(0, 0, overlay.width, overlay.height);
-  drawStructures(ctx, structures, VIEW_SCALE);
+  drawStructures(ctx, structures, paintedScale);
   // Terrain markers are an editing aid: shown only while they can be placed or removed.
-  if (isTerrainKind(mapTool) || mapTool === 'remove') drawHintMarkers(ctx, hints, VIEW_SCALE);
+  if (isTerrainKind(mapTool) || mapTool === 'remove') drawHintMarkers(ctx, hints, paintedScale);
+}
+
+/** Paints the current map and everything on it at the given resolution. */
+function paintMap(scale: number): void {
+  if (!currentMap) return;
+  renderMap(mapCanvas, currentMap, scale);
+  overlay.width = GRID_W * scale;
+  overlay.height = GRID_H * scale;
+  paintedScale = scale;
+  redrawOverlay();
+}
+
+/** A zoomed-in map is repainted in more detail, once the zooming settles. */
+function sharpenSoon(): void {
+  clearTimeout(sharpenTimer);
+  sharpenTimer = window.setTimeout(() => {
+    const zoomedIn = zoom.scale > SHARPEN_ABOVE && document.body.dataset.mode === 'map';
+    if (zoomedIn && paintedScale < DETAIL_SCALE) paintMap(DETAIL_SCALE);
+  }, SHARPEN_DELAY);
 }
 
 function generate(): Promise<void> {
@@ -107,15 +146,16 @@ function generate(): Promise<void> {
           return;
         }
         currentMap = map;
-        renderMap(mapCanvas, map, VIEW_SCALE);
 
         // The coast may have moved; structures left in the sea are dropped.
         const before = structures.length;
         structures = structures.filter((s) => isLand(map, s.x, s.y));
         const lost = before - structures.length;
-        redrawOverlay();
+        // Fast repaint first; the sharp one follows if the user is zoomed in.
+        paintMap(VIEW_SCALE);
         distributionPanel.show(map.distribution);
         setMode('map');
+        sharpenSoon();
 
         const seconds = ((performance.now() - started) / 1000).toFixed(1);
         status.textContent =
@@ -276,5 +316,17 @@ if (params.has('demo')) {
     }
     redrawOverlay();
     if (params.has('dialog')) $('open-distribution').click();
+    if (params.has('zoom')) {
+      // Same event a real mouse wheel sends, aimed at the middle of the map.
+      const rect = $('stage').getBoundingClientRect();
+      $('stage').dispatchEvent(
+        new WheelEvent('wheel', {
+          deltaY: -700,
+          clientX: rect.left + rect.width * 0.45,
+          clientY: rect.top + rect.height * 0.55,
+          cancelable: true,
+        }),
+      );
+    }
   });
 }

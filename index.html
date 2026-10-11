@@ -49,10 +49,13 @@
       </aside>
 
       <div class="center">
-        <div class="stage">
-          <canvas id="sketch" width="1200" height="800"></canvas>
-          <canvas id="map"></canvas>
-          <canvas id="overlay"></canvas>
+        <div class="stage" id="stage">
+          <div class="viewport" id="viewport">
+            <canvas id="sketch" width="1200" height="800"></canvas>
+            <canvas id="map"></canvas>
+            <canvas id="overlay"></canvas>
+          </div>
+          <button id="zoom-reset" title="Voltar a ver o mapa inteiro" hidden></button>
         </div>
         <p id="status" role="status" aria-live="polite"></p>
       </div>
