@@ -46,6 +46,26 @@ export function chamferDistance(source: Uint8Array, w: number, h: number): Float
   return d;
 }
 
+/** Averages each cell with its neighbors up to `radius` cells away (box blur, edges clamped). */
+export function boxBlur(values: Float32Array, w: number, h: number, radius: number): Float32Array {
+  const pass = (src: Float32Array, length: number, lines: number, step: number, lineStep: number) => {
+    const out = new Float32Array(src.length);
+    for (let line = 0; line < lines; line++) {
+      const base = line * lineStep;
+      let sum = 0;
+      for (let k = -radius; k <= radius; k++) sum += src[base + clamp(k, 0, length - 1) * step];
+      for (let p = 0; p < length; p++) {
+        out[base + p * step] = sum / (2 * radius + 1);
+        sum += src[base + clamp(p + radius + 1, 0, length - 1) * step];
+        sum -= src[base + clamp(p - radius, 0, length - 1) * step];
+      }
+    }
+    return out;
+  };
+  const horizontal = pass(values, w, h, 1, w);
+  return pass(horizontal, h, w, w, 1);
+}
+
 /** Value at the given fraction (0..1) of the sorted values. */
 export function percentile(sorted: Float32Array, fraction: number): number {
   if (sorted.length === 0) return 0;

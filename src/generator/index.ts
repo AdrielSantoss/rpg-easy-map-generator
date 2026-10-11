@@ -1,20 +1,26 @@
-import { chamferDistance, clamp, percentile, sstep } from './grid.ts';
+import { Biome } from './biome.ts';
+import {
+  conformClimate,
+  distributeBiomes,
+  measureDistribution,
+  normalizeDistribution,
+  type TerrainDistribution,
+} from './distribution.ts';
+import { boxBlur, chamferDistance, clamp, percentile, sstep } from './grid.ts';
+import {
+  applyClimateHints,
+  applyElevationHints,
+  hintCoverage,
+  TERRAIN_KINDS,
+  type TerrainHint,
+  type TerrainKind,
+} from './hints.ts';
 import { buildLandField } from './landmask.ts';
 import { createNoise2D, fbm, ridged } from './noise.ts';
 import { carveRivers, type River } from './rivers.ts';
 import { seededRng } from './rng.ts';
 
-export const Biome = {
-  Water: 0,
-  Plains: 1,
-  Forest: 2,
-  Taiga: 3,
-  Desert: 4,
-  Swamp: 5,
-  Tundra: 6,
-  Hills: 7,
-  Mountains: 8,
-} as const;
+export { Biome };
 
 export interface MapData {
   seed: string;
@@ -33,20 +39,45 @@ export interface MapData {
   rivers: River[];
   hillLevel: number;
   mountainLevel: number;
+  /** Share of the land each terrain ended up covering. */
+  distribution: TerrainDistribution;
 }
+
+export interface GenerateOptions {
+  /**
+   * The user's "this area is forest / mountains / ..." markers. They reshape
+   * the terrain around them but never move the coast.
+   */
+  hints?: readonly TerrainHint[];
+  /**
+   * How much of the land each terrain should cover (any scale; it is
+   * normalized). Without it the shares fall out of the natural climate.
+   */
+  distribution?: TerrainDistribution | null;
+}
+
+/** Cells over which climate is smoothed after biomes are forced to match a distribution. */
+const CLIMATE_BLUR = 2;
 
 /**
  * Builds the whole map from the rasterized sketch (`wall[i]` = 1 where the
- * user drew). Same sketch + same seed always gives the same map.
+ * user drew). Same sketch, seed and options always give the same map.
  * Returns null when the sketch encloses no land.
  */
-export function generateMap(wall: Uint8Array, w: number, h: number, seed: string): MapData | null {
+export function generateMap(
+  wall: Uint8Array,
+  w: number,
+  h: number,
+  seed: string,
+  { hints = [], distribution = null }: GenerateOptions = {},
+): MapData | null {
   const rng = seededRng(seed);
   const coastNoise = createNoise2D(rng);
   const elevNoise = createNoise2D(rng);
   const ridgeNoise = createNoise2D(rng);
   const moistNoise = createNoise2D(rng);
   const tempNoise = createNoise2D(rng);
+  const hintNoise = createNoise2D(rng);
 
   const field = buildLandField(wall, w, h, coastNoise);
   if (!field) return null;
@@ -94,8 +125,13 @@ export function generateMap(wall: Uint8Array, w: number, h: number, seed: string
   for (let i = 0, p = 0; i < n; i++) if (land[i]) sortedElev[p++] = elevation[i];
   sortedElev.sort();
   const lowLevel = percentile(sortedElev, 0.35);
-  const hillLevel = percentile(sortedElev, 0.72);
-  const mountainLevel = percentile(sortedElev, 0.87);
+  let hillLevel = percentile(sortedElev, 0.72);
+  let mountainLevel = percentile(sortedElev, 0.87);
+
+  // Levels come from the natural terrain, so asking for mountains in one place
+  // does not take them away somewhere else.
+  const levels = { low: lowLevel, hill: hillLevel, mountain: mountainLevel };
+  applyElevationHints(hints, elevation, land, coastDist, levels, w, h, hintNoise);
 
   const baseMoisture = new Float32Array(n);
   const rain = new Float32Array(n);
@@ -117,19 +153,46 @@ export function generateMap(wall: Uint8Array, w: number, h: number, seed: string
     for (let x = 0; x < w; x++) {
       const i = y * w + x;
       const e = elevation[i];
-      const m = clamp(
+      moisture[i] = clamp(
         baseMoisture[i] + 0.25 * Math.exp(-riverDist[i] / 6) + 0.1 * Math.exp(-coastDist[i] / 8),
         0,
         1,
       );
-      const t = clamp(
+      temperature[i] = clamp(
         0.22 + 0.55 * (y / h) + 0.22 * fbm(tempNoise, x / 200, y / 200, 3) - 0.35 * Math.max(0, e - 0.45),
         0,
         1,
       );
-      moisture[i] = m;
-      temperature[i] = t;
+    }
+  }
+  applyClimateHints(hints, moisture, temperature, w, h, hintNoise);
 
+  const target = distribution && normalizeDistribution(distribution);
+  if (target) {
+    const coverage: Partial<Record<TerrainKind, Float32Array>> = {};
+    for (const kind of TERRAIN_KINDS) {
+      const hinted = hintCoverage(hints, kind, w, h, hintNoise);
+      if (hinted) coverage[kind] = hinted;
+    }
+    ({ hillLevel, mountainLevel } = distributeBiomes(
+      target,
+      land,
+      elevation,
+      moisture,
+      temperature,
+      coverage,
+      biome,
+    ));
+    // Biomes no longer follow the climate thresholds, so bring the climate to
+    // them and soften the seams that leaves between neighboring biomes.
+    conformClimate(biome, moisture, temperature);
+    moisture.set(boxBlur(moisture, w, h, CLIMATE_BLUR));
+    temperature.set(boxBlur(temperature, w, h, CLIMATE_BLUR));
+  } else {
+    for (let i = 0; i < n; i++) {
+      const e = elevation[i];
+      const m = moisture[i];
+      const t = temperature[i];
       if (!land[i]) biome[i] = Biome.Water;
       else if (e >= mountainLevel) biome[i] = Biome.Mountains;
       else if (e >= hillLevel) biome[i] = Biome.Hills;
@@ -155,5 +218,6 @@ export function generateMap(wall: Uint8Array, w: number, h: number, seed: string
     rivers,
     hillLevel,
     mountainLevel,
+    distribution: measureDistribution(biome),
   };
 }

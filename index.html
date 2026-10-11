@@ -12,44 +12,71 @@
       <p>Desenhe o contorno dos continentes. O que ficar fechado vira terra, o resto vira mar.</p>
     </header>
 
-    <div class="toolbar">
-      <div class="group sketch-only">
-        <button id="tool-pen" class="active" title="Desenhar contorno">Pincel</button>
-        <button id="tool-eraser" title="Apagar traços">Borracha</button>
-        <button id="undo" title="Desfazer último traço (Ctrl+Z)">Desfazer</button>
-        <button id="clear">Limpar</button>
-        <button id="example" title="Carrega um esboço de exemplo">Exemplo</button>
-      </div>
-      <div class="group map-only">
-        <button id="back">Editar esboço</button>
-        <button id="export">Exportar PNG</button>
-      </div>
-      <div class="group map-only" id="palette">
-        <label>Colocar</label>
-        <button data-place="kingdom">Reino</button>
-        <button data-place="city">Cidade</button>
-        <button data-place="village">Vila</button>
-        <button data-place="tower">Torre</button>
-        <button data-place="port">Porto</button>
-        <button data-place="ruins">Ruínas</button>
-        <button data-place="dungeon">Masmorra</button>
-        <button data-place="remove" title="Clique numa estrutura para removê-la">Remover</button>
-      </div>
-      <div class="group">
-        <label for="seed">Seed</label>
-        <input id="seed" type="text" spellcheck="false" autocomplete="off" />
-        <button id="reroll" title="Sorteia outra seed">Nova variação</button>
-        <button id="generate" class="primary">Gerar mapa</button>
-      </div>
-    </div>
+    <main class="layout">
+      <aside class="panel">
+        <section class="sketch-only">
+          <h2>Desenho</h2>
+          <button id="tool-pen" class="active" title="Desenhar contorno">Pincel</button>
+          <button id="tool-eraser" title="Apagar traços">Borracha</button>
+          <button id="undo" title="Desfazer último traço (Ctrl+Z)">Desfazer</button>
+          <button id="clear">Limpar</button>
+          <button id="example" title="Carrega um esboço de exemplo">Exemplo</button>
+        </section>
+        <section class="map-only">
+          <h2>Terreno</h2>
+          <button data-tool="mountains">Montanha</button>
+          <button data-tool="forest">Floresta</button>
+          <button data-tool="desert">Deserto</button>
+          <button data-tool="swamp">Pântano</button>
+          <button data-tool="tundra">Neve</button>
+          <button data-tool="plains">Planície</button>
+        </section>
+        <section class="map-only">
+          <h2>Estruturas</h2>
+          <button data-tool="kingdom">Reino</button>
+          <button data-tool="city">Cidade</button>
+          <button data-tool="village">Vila</button>
+          <button data-tool="tower">Torre</button>
+          <button data-tool="port">Porto</button>
+          <button data-tool="ruins">Ruínas</button>
+          <button data-tool="dungeon">Masmorra</button>
+        </section>
+        <section class="map-only">
+          <button data-tool="remove" title="Clique numa estrutura ou num marcador de terreno para remover">
+            Remover
+          </button>
+        </section>
+      </aside>
 
-    <div class="stage">
-      <canvas id="sketch" width="1200" height="800"></canvas>
-      <canvas id="map"></canvas>
-      <canvas id="overlay"></canvas>
-    </div>
+      <div class="center">
+        <div class="stage">
+          <canvas id="sketch" width="1200" height="800"></canvas>
+          <canvas id="map"></canvas>
+          <canvas id="overlay"></canvas>
+        </div>
+        <p id="status" role="status" aria-live="polite"></p>
+      </div>
 
-    <p id="status" role="status" aria-live="polite"></p>
+      <aside class="panel">
+        <section>
+          <h2>Mapa</h2>
+          <label for="seed">Seed</label>
+          <input id="seed" type="text" spellcheck="false" autocomplete="off" />
+          <button id="reroll" title="Sorteia outra seed">Nova variação</button>
+          <button id="generate" class="primary">Gerar mapa</button>
+        </section>
+        <section class="map-only">
+          <h2>Distribuição do terreno</h2>
+          <div id="distribution"></div>
+          <button id="apply-distribution" title="Refaz o terreno com estes percentuais">Aplicar</button>
+          <button id="reset-distribution" title="Volta à distribuição natural do mapa">Automático</button>
+        </section>
+        <section class="map-only">
+          <button id="back">Editar esboço</button>
+          <button id="export">Exportar PNG</button>
+        </section>
+      </aside>
+    </main>
 
     <script type="module" src="/src/main.ts"></script>
   </body>
