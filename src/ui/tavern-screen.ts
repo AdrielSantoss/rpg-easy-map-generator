@@ -1,5 +1,11 @@
 import { renderTavern } from '../render/tavern.ts';
-import { generateTavern, TAVERN_SIZES, type TavernSize } from '../tavern/generate.ts';
+import {
+  generateTavern,
+  TAVERN_QUALITIES,
+  TAVERN_SIZES,
+  type TavernQuality,
+  type TavernSize,
+} from '../tavern/generate.ts';
 
 /** Pixels per 5-foot square in the picture: the size virtual tabletops commonly expect. */
 const SQUARE_PX = 70;
@@ -9,6 +15,7 @@ const STORAGE_KEY = 'rpg-easy-map-generator:tavern';
 interface Settings {
   seed: string;
   size: TavernSize;
+  quality: TavernQuality;
   grid: boolean;
   labels: boolean;
   lighting: boolean;
@@ -19,13 +26,23 @@ function randomSeed(): string {
 }
 
 function loadSettings(): Settings {
-  const fresh: Settings = { seed: randomSeed(), size: 'medium', grid: true, labels: true, lighting: true };
+  const fresh: Settings = {
+    seed: randomSeed(),
+    size: 'medium',
+    quality: 'medium',
+    grid: true,
+    labels: true,
+    lighting: true,
+  };
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Partial<Settings> | null;
     if (!saved || typeof saved !== 'object') return fresh;
     return {
       seed: typeof saved.seed === 'string' && saved.seed.length <= 80 ? saved.seed : fresh.seed,
       size: TAVERN_SIZES.includes(saved.size as TavernSize) ? (saved.size as TavernSize) : fresh.size,
+      quality: TAVERN_QUALITIES.includes(saved.quality as TavernQuality)
+        ? (saved.quality as TavernQuality)
+        : fresh.quality,
       grid: typeof saved.grid === 'boolean' ? saved.grid : fresh.grid,
       labels: typeof saved.labels === 'boolean' ? saved.labels : fresh.labels,
       lighting: typeof saved.lighting === 'boolean' ? saved.lighting : fresh.lighting,
@@ -46,11 +63,12 @@ export function initTavernScreen(root: HTMLElement): void {
   const seedInput = find<HTMLInputElement>('#tavern-seed');
   const status = find('#tavern-status');
   const sizeButtons = [...root.querySelectorAll<HTMLElement>('[data-tavern-size]')];
+  const qualityButtons = [...root.querySelectorAll<HTMLElement>('[data-tavern-quality]')];
   const settings = loadSettings();
 
   const refresh = () => {
     // An emptied seed field still has to give a tavern; it gets a new seed when left.
-    const tavern = generateTavern(settings.seed || 'taverna', settings.size);
+    const tavern = generateTavern(settings.seed || 'taverna', settings.size, settings.quality);
     renderTavern(canvas, tavern, {
       squarePx: SQUARE_PX,
       grid: settings.grid,
@@ -59,6 +77,9 @@ export function initTavernScreen(root: HTMLElement): void {
     });
     for (const button of sizeButtons) {
       button.classList.toggle('active', button.dataset.tavernSize === settings.size);
+    }
+    for (const button of qualityButtons) {
+      button.classList.toggle('active', button.dataset.tavernQuality === settings.quality);
     }
     find('#tavern-grid').classList.toggle('active', settings.grid);
     find('#tavern-labels').classList.toggle('active', settings.labels);
@@ -77,6 +98,12 @@ export function initTavernScreen(root: HTMLElement): void {
   for (const button of sizeButtons) {
     button.addEventListener('click', () => {
       settings.size = button.dataset.tavernSize as TavernSize;
+      refresh();
+    });
+  }
+  for (const button of qualityButtons) {
+    button.addEventListener('click', () => {
+      settings.quality = button.dataset.tavernQuality as TavernQuality;
       refresh();
     });
   }
@@ -113,7 +140,7 @@ export function initTavernScreen(root: HTMLElement): void {
       if (!blob) return;
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = `taverna-${tavern.seed}.png`;
+      link.download = `taverna-${tavern.seed}-${tavern.quality}.png`;
       link.click();
       URL.revokeObjectURL(link.href);
     }, 'image/png');

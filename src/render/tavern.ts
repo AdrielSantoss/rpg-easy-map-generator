@@ -1,5 +1,12 @@
 import { seededRng, type Rng } from '../generator/rng.ts';
-import { roomMap, type Opening, type Room, type RoomKind, type Tavern } from '../tavern/generate.ts';
+import {
+  roomMap,
+  type Opening,
+  type Room,
+  type RoomKind,
+  type Tavern,
+  type TavernQuality,
+} from '../tavern/generate.ts';
 import { paintFurniture } from './tavern-furniture.ts';
 
 export interface TavernView {
@@ -25,8 +32,22 @@ const ROOM_LABEL: Record<RoomKind, string> = {
   guest: 'Quarto',
 };
 
-/** How dark an unlit corner gets with lighting on (0 = no dimming, 1 = black). */
-const DARKNESS = 0.42;
+/**
+ * How dark an unlit corner gets with lighting on (0 = no dimming, 1 = black).
+ * A poor house is gloomy; a rich one burns candles freely.
+ */
+const DARKNESS: Record<TavernQuality, number> = { poor: 0.54, medium: 0.42, rich: 0.3 };
+
+/**
+ * Floorboard color for the common room, and how much boards differ from one
+ * another: grey and patchy where nobody looks after them, warm and even where
+ * they are waxed.
+ */
+const BOARDS: Record<TavernQuality, { color: readonly [number, number, number]; spread: number }> = {
+  poor: { color: [146, 120, 90], spread: 20 },
+  medium: { color: [172, 132, 84], spread: 13 },
+  rich: { color: [188, 136, 76], spread: 8 },
+};
 
 /**
  * Paints a tavern as a top-down battle map on a 5-foot grid, on the same aged
@@ -43,7 +64,7 @@ export function renderTavern(canvas: HTMLCanvasElement, tavern: Tavern, view: Ta
   ctx.lineJoin = 'round';
 
   paintGround(ctx, tavern, rng);
-  for (const room of tavern.rooms) paintFloor(ctx, room, rng);
+  for (const room of tavern.rooms) paintFloor(ctx, room, tavern.quality, rng);
   paintFurniture(ctx, tavern.furniture, rng);
   if (view.lighting) paintLighting(ctx, tavern, view.squarePx);
   // The grid goes over the furniture and the lighting, so squares can be counted anywhere.
@@ -120,7 +141,7 @@ function tint([r, g, b]: readonly [number, number, number], spread: number, rng:
   return `rgb(${Math.round(r + d)}, ${Math.round(g + d)}, ${Math.round(b + d * 0.8)})`;
 }
 
-function paintFloor(ctx: Ctx, room: Room, rng: Rng): void {
+function paintFloor(ctx: Ctx, room: Room, quality: TavernQuality, rng: Rng): void {
   ctx.save();
   ctx.beginPath();
   ctx.rect(room.x, room.y, room.w, room.h);
@@ -148,7 +169,11 @@ function paintFloor(ctx: Ctx, room: Room, rng: Rng): void {
   } else {
     // Floorboards, each a slightly different shade and cut to length, with grain and nails.
     const base: readonly [number, number, number] =
-      room.kind === 'storage' ? [140, 105, 68] : room.kind === 'guest' ? [184, 144, 94] : [172, 132, 84];
+      room.kind === 'storage'
+        ? [140, 105, 68]
+        : room.kind === 'guest' && quality !== 'poor'
+          ? [184, 144, 94]
+          : BOARDS[quality].color;
     const upright = room.kind === 'guest';
     const board = 1 / 3;
     const across = upright ? room.w : room.h;
@@ -160,7 +185,7 @@ function paintFloor(ctx: Ctx, room: Room, rng: Rng): void {
       let from = -rng() * 1.5;
       while (from < along) {
         const length = 1.8 + rng() * 3.4;
-        ctx.fillStyle = tint(base, 13, rng);
+        ctx.fillStyle = tint(base, BOARDS[quality].spread, rng);
         ctx.fillRect(from, k * board, length, board);
         // Grain: a couple of faint streaks along the board.
         ctx.strokeStyle = 'rgba(70, 44, 18, 0.13)';
@@ -240,10 +265,17 @@ function lightSources(tavern: Tavern): Light[] {
         warm: true,
       });
     } else if (piece.kind === 'table-round' || piece.kind === 'table-long') {
-      lights.push({ x, y, radius: 2.9, strength: 0.9, warm: true });
+      // A table is lit by the candle on it; a poor house leaves some without.
+      if (piece.variant !== 'poor') lights.push({ x, y, radius: 2.9, strength: 0.9, warm: true });
+    } else if (piece.kind === 'nightstand') {
+      lights.push({ x, y, radius: 2.4, strength: 0.8, warm: true });
+    } else if (piece.kind === 'oven' || piece.kind === 'cauldron') {
+      lights.push({ x, y, radius: 3.6, strength: 0.9, warm: true });
     } else if (piece.kind === 'bar') {
-      for (let at = piece.x + 2; at < piece.x + piece.w - 0.5; at += 3) {
-        lights.push({ x: at, y, radius: 3.2, strength: 0.9, warm: true });
+      // Lanterns along the bar; a poor one makes do with a single dim one.
+      const dim = piece.variant === 'poor';
+      for (let at = piece.x + 2; at < piece.x + piece.w - 0.5; at += dim ? 99 : 3) {
+        lights.push({ x: at + 0.5, y, radius: 3.2, strength: dim ? 0.6 : 0.9, warm: true });
       }
     } else if (piece.kind === 'stove') {
       lights.push({ x, y, radius: 3.4, strength: 0.85, warm: true });
@@ -300,7 +332,7 @@ function paintLighting(ctx: Ctx, tavern: Tavern, squarePx: number): void {
   layer.height = tavern.h * squarePx;
   const shade = layer.getContext('2d')!;
   shade.scale(squarePx, squarePx);
-  shade.fillStyle = `rgba(14, 8, 3, ${DARKNESS})`;
+  shade.fillStyle = `rgba(14, 8, 3, ${DARKNESS[tavern.quality]})`;
   shade.fillRect(x, y, w, h);
   shade.globalCompositeOperation = 'destination-out';
   for (const light of lights) {

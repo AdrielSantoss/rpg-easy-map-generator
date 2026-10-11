@@ -1,15 +1,35 @@
 import { describe, expect, it } from 'vitest';
 import { seededRng } from '../generator/rng.ts';
-import { generateTavern, roomMap, TAVERN_SIZES, walkable, type Tavern } from './generate.ts';
+import {
+  generateTavern,
+  LOOSE_KINDS,
+  roomMap,
+  SOLID_KINDS,
+  TAVERN_QUALITIES,
+  TAVERN_SIZES,
+  walkable,
+  type Furniture,
+  type Room,
+  type Tavern,
+  type TavernQuality,
+} from './generate.ts';
 import { tavernName } from './names.ts';
 
 const SEEDS = ['aldoria', 'javali', 'caneca', 'x', '42', 'outra', 'taverna', 'seed-8'];
-/** Every size with every seed: the layout has to hold for all of them. */
-const all = (): Tavern[] => TAVERN_SIZES.flatMap((size) => SEEDS.map((seed) => generateTavern(seed, size)));
+/** Every size and quality with every seed: the layout has to hold for all of them. */
+const all = (): Tavern[] =>
+  TAVERN_SIZES.flatMap((size) =>
+    TAVERN_QUALITIES.flatMap((quality) => SEEDS.map((seed) => generateTavern(seed, size, quality))),
+  );
+/** One quality, in the sizes that have guest rooms. */
+const withGuests = (quality: TavernQuality): Tavern[] =>
+  (['medium', 'large'] as const).flatMap((size) => SEEDS.map((seed) => generateTavern(seed, size, quality)));
+const count = (tavern: Tavern, ...kinds: Furniture['kind'][]) =>
+  tavern.furniture.filter((piece) => kinds.includes(piece.kind)).length;
+const inside = (room: Room, piece: Furniture) =>
+  piece.x >= room.x && piece.x < room.x + room.w && piece.y >= room.y && piece.y < room.y + room.h;
 
 const roomsOf = (tavern: Tavern, kind: string) => tavern.rooms.filter((room) => room.kind === kind);
-/** Pieces that fill their squares: nothing else may share those, and nobody walks through. */
-const SOLID = ['bar', 'fireplace', 'stove', 'counter', 'washtub', 'barrel', 'crate', 'bed', 'chest'];
 
 describe('generateTavern', () => {
   it('gives the same tavern for the same seed and size', () => {
@@ -41,7 +61,7 @@ describe('generateTavern', () => {
   it('has guest rooms and stairs only in the larger sizes', () => {
     for (const tavern of all()) {
       const guests = roomsOf(tavern, 'guest').length;
-      const stairs = tavern.furniture.filter((piece) => piece.kind === 'stairs').length;
+      const stairs = count(tavern, 'stairs');
       if (tavern.size === 'small') expect([guests, stairs]).toEqual([0, 0]);
       else {
         expect(guests).toBeGreaterThanOrEqual(2);
@@ -149,22 +169,20 @@ describe('generateTavern', () => {
       expect(inCommon('bar')).toHaveLength(1);
       expect(inCommon('fireplace')).toHaveLength(1);
       expect(inCommon('stool').length).toBeGreaterThan(1);
-      expect(inCommon('table-round').length + inCommon('table-long').length).toBeGreaterThan(0);
+      // A poor house may seat everyone round upturned barrels instead of tables.
+      const barrelTables = inCommon('barrel').filter((piece) => piece.variant === 'table');
+      const tables = inCommon('table-round').length + inCommon('table-long').length + barrelTables.length;
+      expect(tables).toBeGreaterThan(0);
     }
   });
 
-  it('gives every guest room a bed', () => {
+  it('gives every guest room somewhere to sleep', () => {
     for (const tavern of all()) {
       for (const guest of roomsOf(tavern, 'guest')) {
         const beds = tavern.furniture.filter(
-          (p) =>
-            p.kind === 'bed' &&
-            p.x >= guest.x &&
-            p.x < guest.x + guest.w &&
-            p.y >= guest.y &&
-            p.y < guest.y + guest.h,
+          (p) => (p.kind === 'bed' || p.kind === 'bed-double') && inside(guest, p),
         );
-        expect(beds).toHaveLength(1);
+        expect(beds.length).toBeGreaterThanOrEqual(1);
       }
     }
   });
@@ -184,7 +202,7 @@ describe('generateTavern', () => {
     for (const tavern of all()) {
       const taken = new Uint8Array(tavern.w * tavern.h);
       for (const piece of tavern.furniture) {
-        if (!SOLID.includes(piece.kind)) continue;
+        if (!(SOLID_KINDS as readonly string[]).includes(piece.kind)) continue;
         for (let y = piece.y; y < piece.y + piece.h; y++) {
           for (let x = piece.x; x < piece.x + piece.w; x++) {
             expect(taken[y * tavern.w + x]).toBe(0);
@@ -228,6 +246,161 @@ describe('generateTavern', () => {
       }),
     );
     expect(sides.size).toBe(2);
+  });
+});
+
+describe('tavern quality', () => {
+  it('never changes the building: same rooms, doors and windows, poorer or richer', () => {
+    for (const size of TAVERN_SIZES) {
+      for (const seed of SEEDS) {
+        const [poor, medium, rich] = TAVERN_QUALITIES.map((quality) => generateTavern(seed, size, quality));
+        for (const other of [poor, rich]) {
+          expect(other.rooms).toEqual(medium.rooms);
+          expect(other.doors).toEqual(medium.doors);
+          expect(other.windows).toEqual(medium.windows);
+          expect(other.name).toBe(medium.name);
+        }
+      }
+    }
+  });
+
+  it('is medium when not said', () => {
+    expect(generateTavern('aldoria', 'large')).toEqual(generateTavern('aldoria', 'large', 'medium'));
+  });
+
+  it('furnishes each quality differently', () => {
+    const kinds = (quality: TavernQuality) =>
+      JSON.stringify(generateTavern('aldoria', 'large', quality).furniture);
+    expect(new Set(TAVERN_QUALITIES.map(kinds)).size).toBe(3);
+  });
+
+  it('knows every kind of piece it places as either solid or loose', () => {
+    const known: readonly string[] = [...SOLID_KINDS, ...LOOSE_KINDS];
+    for (const tavern of all()) for (const piece of tavern.furniture) expect(known).toContain(piece.kind);
+  });
+
+  it('puts beer pumps on the bar, more of them in a rich house and none in a poor one', () => {
+    for (const seed of SEEDS) {
+      const taps = (quality: TavernQuality) => {
+        const tavern = generateTavern(seed, 'large', quality);
+        const bar = tavern.furniture.find((piece) => piece.kind === 'bar')!;
+        const pumps = tavern.furniture.filter((piece) => piece.kind === 'tap');
+        // Every pump stands on the bar.
+        for (const pump of pumps) {
+          expect(pump.x).toBeGreaterThanOrEqual(bar.x);
+          expect(pump.x + pump.w).toBeLessThanOrEqual(bar.x + bar.w);
+          expect(pump.y).toBeGreaterThanOrEqual(bar.y);
+          expect(pump.y + pump.h).toBeLessThanOrEqual(bar.y + bar.h);
+        }
+        return pumps.length;
+      };
+      expect(taps('poor')).toBe(0);
+      expect(taps('medium')).toBe(2);
+      expect(taps('rich')).toBeGreaterThan(2);
+    }
+  });
+
+  it('stocks the shelves behind the bar in more than one way', () => {
+    for (const quality of TAVERN_QUALITIES) {
+      const stock = new Set(
+        SEEDS.flatMap((seed) =>
+          generateTavern(seed, 'large', quality)
+            .furniture.filter((piece) => piece.kind === 'shelf')
+            .map((piece) => piece.variant),
+        ),
+      );
+      expect(stock.size).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('leaves a poor tavern dirty, broken and out of line', () => {
+    for (const tavern of SEEDS.map((seed) => generateTavern(seed, 'large', 'poor'))) {
+      expect(count(tavern, 'stain')).toBeGreaterThan(4);
+      expect(count(tavern, 'straw')).toBeGreaterThan(2);
+      expect(count(tavern, 'cobweb', 'bottle', 'debris', 'rat')).toBeGreaterThan(3);
+      expect(tavern.furniture.some((piece) => piece.angle)).toBe(true);
+      expect(count(tavern, 'plant', 'armchair', 'tap', 'rug')).toBe(0);
+    }
+  });
+
+  it('keeps a rich tavern clean, tidy and well furnished', () => {
+    for (const tavern of SEEDS.map((seed) => generateTavern(seed, 'large', 'rich'))) {
+      expect(count(tavern, 'stain', 'straw', 'cobweb', 'bottle', 'debris', 'rat')).toBe(0);
+      expect(tavern.furniture.some((piece) => piece.angle)).toBe(false);
+      expect(count(tavern, 'armchair')).toBe(2);
+      expect(count(tavern, 'plant')).toBeGreaterThan(0);
+      expect(count(tavern, 'oven')).toBe(1);
+      expect(count(tavern, 'bench')).toBe(0);
+    }
+  });
+
+  it('gives a rich house double beds, with every guest room furnished the same', () => {
+    for (const tavern of withGuests('rich')) {
+      const layouts = roomsOf(tavern, 'guest').map((guest) =>
+        tavern.furniture
+          .filter((piece) => inside(guest, piece))
+          // Positions measured from the room's own corner, on whichever side it was mirrored to.
+          .map((piece) =>
+            [
+              piece.kind,
+              Math.min(piece.x - guest.x, guest.x + guest.w - piece.x - piece.w).toFixed(1),
+              (piece.y - guest.y).toFixed(1),
+            ].join(':'),
+          )
+          .filter(
+            (entry) =>
+              !entry.startsWith('wardrobe') && !entry.startsWith('desk') && !entry.startsWith('chair'),
+          )
+          .sort(),
+      );
+      for (const layout of layouts) {
+        expect(layout).toEqual(layouts[0]);
+        expect(layout.some((entry) => entry.startsWith('bed-double'))).toBe(true);
+      }
+    }
+  });
+
+  it('gives an ordinary house a mix of single and double beds', () => {
+    const beds = new Set(
+      withGuests('medium').flatMap((tavern) => tavern.furniture.map((piece) => piece.kind)),
+    );
+    expect(beds.has('bed')).toBe(true);
+    expect(beds.has('bed-double')).toBe(true);
+    expect(beds.has('wardrobe')).toBe(true);
+  });
+
+  it('gives a poor house straw mattresses, sometimes two to a room', () => {
+    const rooms = withGuests('poor').flatMap((tavern) =>
+      roomsOf(tavern, 'guest').map((guest) =>
+        tavern.furniture.filter((piece) => piece.kind === 'bed' && inside(guest, piece)),
+      ),
+    );
+    for (const beds of rooms) for (const bed of beds) expect(bed.variant).toBe('straw');
+    expect(rooms.some((beds) => beds.length === 2)).toBe(true);
+    expect(rooms.some((beds) => beds.length === 1)).toBe(true);
+  });
+
+  it('cooks differently by quality: a cauldron, a stove, or a stove and an oven', () => {
+    for (const seed of SEEDS) {
+      const cooking = (quality: TavernQuality) => {
+        const tavern = generateTavern(seed, 'medium', quality);
+        return [count(tavern, 'cauldron'), count(tavern, 'stove'), count(tavern, 'oven')];
+      };
+      expect(cooking('poor')).toEqual([1, 0, 0]);
+      expect(cooking('medium')).toEqual([0, 1, 0]);
+      expect(cooking('rich')).toEqual([0, 1, 1]);
+    }
+  });
+
+  it('varies what the kitchen counters are used for', () => {
+    const work = new Set(
+      SEEDS.flatMap((seed) =>
+        generateTavern(seed, 'large', 'medium')
+          .furniture.filter((piece) => piece.kind === 'counter')
+          .map((piece) => piece.variant),
+      ),
+    );
+    expect(work.size).toBeGreaterThanOrEqual(3);
   });
 });
 
