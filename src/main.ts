@@ -7,7 +7,7 @@ import { drawRoads } from './render/roads.ts';
 import { drawSelection, drawStructures } from './render/structures.ts';
 import { structureAt, type Structure, type StructureKind } from './structures/model.ts';
 import { suggestName } from './structures/names.ts';
-import { distanceToRoad, findRoad, markRoad, type RoadPath } from './structures/roads.ts';
+import { distanceToRoad, findRoad, markRoad, planNetwork, type RoadPath } from './structures/roads.ts';
 import { DistributionPanel } from './ui/distribution.ts';
 import { SketchBoard, type Tool } from './ui/sketch.ts';
 import { StructureMenu } from './ui/structure-menu.ts';
@@ -291,25 +291,56 @@ function routeRoads(): number {
   return lost;
 }
 
+/** Routes a road between two structures and adds it to the map. Returns null when there is no way by land. */
+function buildRoad(from: Structure, to: Structure): Road | null {
+  if (!currentMap) return null;
+  const used = new Uint8Array(GRID_W * GRID_H);
+  for (const road of roads) markRoad(used, road.path);
+  const path = findRoad(currentMap, from, to, used);
+  if (!path) return null;
+  const road: Road = { from, to, path };
+  roads.push(road);
+  return road;
+}
+
 function addRoad(from: Structure, to: Structure): void {
-  if (!currentMap) return;
   if (roads.some((r) => (r.from === from && r.to === to) || (r.from === to && r.to === from))) {
     status.textContent = `"${from.name}" e "${to.name}" já estão ligados por estrada.`;
     return;
   }
-  const used = new Uint8Array(GRID_W * GRID_H);
-  for (const road of roads) markRoad(used, road.path);
-  const path = findRoad(currentMap, from, to, used);
-  if (!path) {
+  const road = buildRoad(from, to);
+  if (!road) {
     status.textContent = `Não há caminho por terra entre "${from.name}" e "${to.name}".`;
     return;
   }
-  const road: Road = { from, to, path };
-  roads.push(road);
   undoStack.push(() => {
     roads = roads.filter((other) => other !== road);
   });
   status.textContent = `Estrada criada entre "${from.name}" e "${to.name}".`;
+}
+
+/** Links every structure to the others on its landmass, keeping the roads that already exist. */
+function connectAll(): void {
+  if (!currentMap) return;
+  if (structures.length < 2) {
+    status.textContent = 'Coloque pelo menos duas estruturas para ligar.';
+    return;
+  }
+  const existing = roads.map((r) => [structures.indexOf(r.from), structures.indexOf(r.to)] as const);
+  const built: Road[] = [];
+  for (const [a, b] of planNetwork(currentMap, structures, existing)) {
+    const road = buildRoad(structures[a], structures[b]);
+    if (road) built.push(road);
+  }
+  if (built.length === 0) {
+    status.textContent = 'Tudo o que dá para ligar por terra já está ligado.';
+    return;
+  }
+  undoStack.push(() => {
+    roads = roads.filter((road) => !built.includes(road));
+  });
+  status.textContent = `${built.length} estrada(s) criada(s).`;
+  redrawOverlay();
 }
 
 function onMapPointerDown(e: PointerEvent): void {
@@ -465,6 +496,7 @@ overlay.addEventListener('pointercancel', onMapPointerUp);
 overlay.addEventListener('pointerleave', () => {
   brush.hidden = true;
 });
+$('connect-all').addEventListener('click', connectAll);
 $('clear-hints').addEventListener('click', () => {
   if (hints.length === 0) return;
   hints = [];

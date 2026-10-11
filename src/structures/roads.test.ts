@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Biome } from '../generator/biome.ts';
 import { generateMap } from '../generator/index.ts';
 import { drawRing } from '../testing/shapes.ts';
-import { distanceToRoad, findRoad, markRoad, type RoadTerrain } from './roads.ts';
+import { distanceToRoad, findRoad, markRoad, planNetwork, type RoadTerrain } from './roads.ts';
 
 const W = 60;
 const H = 40;
@@ -145,6 +145,77 @@ describe('findRoad', () => {
     const road = findRoad(map, { x: 50, y: 50 }, { x: 100, y: 50 })!;
     expect(road).not.toBeNull();
     for (const c of road.cells) expect(map.biome[c]).not.toBe(Biome.Water);
+  });
+});
+
+describe('planNetwork', () => {
+  const at = (x: number, y: number) => ({ x: x + 0.5, y: y + 0.5 });
+  /** Whether every place can reach every other through the given links. */
+  const connected = (count: number, links: (readonly [number, number])[]) => {
+    const reached = new Set([0]);
+    for (let pass = 0; pass < count; pass++) {
+      for (const [a, b] of links) {
+        if (reached.has(a)) reached.add(b);
+        if (reached.has(b)) reached.add(a);
+      }
+    }
+    return reached.size === count;
+  };
+
+  it('links every place using one road fewer than there are places', () => {
+    const places = [at(5, 5), at(50, 8), at(30, 30), at(10, 34), at(52, 33)];
+    const plan = planNetwork(plain(), places);
+    expect(plan).toHaveLength(4);
+    expect(connected(places.length, plan)).toBe(true);
+  });
+
+  it('prefers short links: places in a row are chained, not all tied to one end', () => {
+    const plan = planNetwork(plain(), [at(5, 20), at(25, 20), at(50, 20)]);
+    expect(plan).toEqual([
+      [0, 1],
+      [1, 2],
+    ]);
+  });
+
+  it('never pairs places on different landmasses', () => {
+    const terrain = plain((t, cell) => {
+      for (let y = 0; y < H; y++) t.biome[cell(30, y)] = Biome.Water;
+    });
+    const plan = planNetwork(terrain, [at(5, 10), at(10, 30), at(50, 10), at(55, 30)]);
+    expect(plan).toEqual([
+      [0, 1],
+      [2, 3],
+    ]);
+  });
+
+  it('counts existing roads as connections and does not repeat them', () => {
+    const places = [at(5, 20), at(25, 20), at(50, 20)];
+    expect(planNetwork(plain(), places, [[0, 2]])).toEqual([[0, 1]]);
+    expect(
+      planNetwork(plain(), places, [
+        [0, 1],
+        [1, 2],
+      ]),
+    ).toEqual([]);
+  });
+
+  it('plans nothing for fewer than two places, or for places in the water', () => {
+    expect(planNetwork(plain(), [])).toEqual([]);
+    expect(planNetwork(plain(), [at(5, 5)])).toEqual([]);
+    const terrain = plain((t, cell) => {
+      t.biome[cell(50, 20)] = Biome.Water;
+    });
+    expect(planNetwork(terrain, [at(5, 20), at(50, 20)])).toEqual([]);
+  });
+
+  it('plans only links a road can actually follow', () => {
+    const terrain = plain((t, cell) => {
+      for (let y = 0; y < 30; y++) t.biome[cell(30, y)] = Biome.Water;
+    });
+    const places = [at(5, 5), at(55, 5), at(30, 36)];
+    const plan = planNetwork(terrain, places);
+    expect(plan).toHaveLength(2);
+    for (const [a, b] of plan) expect(findRoad(terrain, places[a], places[b])).not.toBeNull();
   });
 });
 

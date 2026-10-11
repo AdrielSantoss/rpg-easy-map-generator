@@ -190,6 +190,70 @@ export function findRoad(
   return { cells, points, bridges };
 }
 
+/**
+ * Chooses which pairs of places to link by road so that every place is
+ * connected to all the others on its landmass, using the shortest links that
+ * do it (a minimum spanning tree by straight-line distance). `linked` are
+ * pairs of indices already joined by a road; they count as connected and are
+ * not returned again. Places on different landmasses are never paired.
+ */
+export function planNetwork(
+  map: Pick<RoadTerrain, 'w' | 'h' | 'biome'>,
+  places: readonly { x: number; y: number }[],
+  linked: readonly (readonly [number, number])[] = [],
+): [number, number][] {
+  const { w, h, biome } = map;
+
+  // Flood each landmass a place stands on, so places can be compared by landmass.
+  const landmass = new Int32Array(w * h).fill(-1);
+  const home = places.map((place, index) => {
+    if (place.x < 0 || place.y < 0 || place.x >= w || place.y >= h) return -1;
+    const start = Math.floor(place.y) * w + Math.floor(place.x);
+    if (biome[start] === Biome.Water) return -1;
+    if (landmass[start] < 0) {
+      landmass[start] = index;
+      const pending = [start];
+      while (pending.length) {
+        const c = pending.pop()!;
+        const x = c % w;
+        const y = (c / w) | 0;
+        for (let k = 0; k < 8; k++) {
+          const nx = x + NX[k];
+          const ny = y + NY[k];
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const nb = ny * w + nx;
+          if (landmass[nb] >= 0 || biome[nb] === Biome.Water) continue;
+          landmass[nb] = index;
+          pending.push(nb);
+        }
+      }
+    }
+    return landmass[start];
+  });
+
+  // Groups of places already reachable from one another (union-find).
+  const group = places.map((_, index) => index);
+  const find = (i: number): number => (group[i] === i ? i : (group[i] = find(group[i])));
+  for (const [a, b] of linked) group[find(a)] = find(b);
+
+  const candidates: [number, number, number][] = [];
+  for (let a = 0; a < places.length; a++) {
+    for (let b = a + 1; b < places.length; b++) {
+      if (home[a] < 0 || home[a] !== home[b]) continue;
+      candidates.push([a, b, Math.hypot(places[a].x - places[b].x, places[a].y - places[b].y)]);
+    }
+  }
+  candidates.sort((p, q) => p[2] - q[2]);
+
+  const plan: [number, number][] = [];
+  for (const [a, b] of candidates) {
+    if (find(a) === find(b)) continue;
+    group[find(a)] = find(b);
+    plan.push([a, b]);
+  }
+  return plan;
+}
+
 /** Marks the cells of a road as carrying one, for later routes to reuse. */
 export function markRoad(used: Uint8Array, path: RoadPath): void {
   for (const c of path.cells) used[c] = 1;
