@@ -36,3 +36,21 @@ export function structureAt(structures: readonly Structure[], x: number, y: numb
   }
   return best;
 }
+
+/** The box a structure's icon and name take up on the map, for keeping other labels off it. */
+export function structureFootprint(structure: Structure): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  const icon = ICON_HEIGHT[structure.kind];
+  // The name is written under the icon, about 4 cells per letter and 9 cells tall.
+  const nameHeight = 9;
+  return {
+    x: structure.x,
+    y: structure.y + (nameHeight - icon) / 2,
+    width: Math.max(icon, structure.name.length * 4),
+    height: icon + nameHeight,
+  };
+}

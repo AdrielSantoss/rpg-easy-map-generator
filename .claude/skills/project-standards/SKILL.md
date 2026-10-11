@@ -22,16 +22,18 @@ clicks and sensible automatic results. Prefer generating a good default over add
 src/
   generator/   Pure map generation: sketch mask in, MapData out. No DOM, no canvas.
   structures/  Pure model for user-placed structures: kinds, hit testing, name suggestions.
+  regions/     Pure naming of map features: seas, landmasses, forests, mountain ranges.
+  project/     Pure save format: turning the user's work into text and back, validated.
   view/        Pure zoom and pan math for the map frame.
   render/      Canvas 2D painting: parchment map and structure icons.
-  ui/          DOM widgets: sketch board, distribution sliders, zoom control.
+  ui/          DOM widgets: sketch board, sliders, zoom, structure and region menus.
   testing/     Helpers shared by tests. Never imported by app code.
   main.ts      Wires the DOM to the modules above. The only file that reads the page.
 ```
 
-Dependencies point one way: `main.ts` → `ui`, `render` → `structures`, `view`, `generator`. Nothing in
-`generator/`, `structures/` or `view/` may touch `document`, `window` or a canvas. That keeps them
-testable in Node, so put logic there and keep `render/`, `ui/` and `main.ts` thin.
+Dependencies point one way: `main.ts` → `ui`, `render` → the pure folders (`project`, `regions`,
+`structures`, `view`, `generator`). Nothing in a pure folder may touch `document`, `window` or a canvas.
+That keeps them testable in Node, so put logic there and keep `render/`, `ui/` and `main.ts` thin.
 
 ## Core rules
 
@@ -60,8 +62,8 @@ testable in Node, so put logic there and keep `render/`, `ui/` and `main.ts` thi
 
 Vitest, in Node, colocated with the code as `<module>.test.ts`.
 
-- Every module in `generator/`, `structures/` and `view/` has tests. New behavior there comes with a test, and a
-  bug fix comes with a test that fails without the fix.
+- Every module in a pure folder has tests. New behavior there comes with a test, and a bug fix comes with
+  a test that fails without the fix.
 - Test behavior a user would recognize ("closes a small gap in the outline"), not implementation details.
   Test names read as a sentence after `it`.
 - Build inputs with the helpers in `src/testing/` (for example `ringSketch`) rather than hand-written

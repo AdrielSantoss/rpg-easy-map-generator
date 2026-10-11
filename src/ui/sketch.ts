@@ -1,10 +1,7 @@
-export type Tool = 'pen' | 'eraser';
+import type { SketchStroke } from '../project/project.ts';
 
-interface Stroke {
-  tool: Tool;
-  /** x,y pairs in canvas coordinates. */
-  points: number[];
-}
+export type Tool = SketchStroke['tool'];
+type Stroke = SketchStroke;
 
 const PEN_WIDTH = 4;
 const ERASER_WIDTH = 28;
@@ -13,6 +10,8 @@ const INK = '#3a2c1e';
 /** The drawing board where the user sketches the continent outlines. */
 export class SketchBoard {
   tool: Tool = 'pen';
+  /** Called whenever the drawing changes. */
+  onChange: () => void = () => {};
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private strokes: Stroke[] = [];
@@ -39,6 +38,17 @@ export class SketchBoard {
     };
     canvas.addEventListener('pointerup', finish);
     canvas.addEventListener('pointercancel', finish);
+  }
+
+  /** The strokes drawn so far, for saving. */
+  get strokesData(): readonly SketchStroke[] {
+    return this.strokes;
+  }
+
+  /** Replaces the drawing with saved strokes. */
+  load(strokes: readonly SketchStroke[]): void {
+    this.strokes = strokes.map((stroke) => ({ tool: stroke.tool, points: [...stroke.points] }));
+    this.redraw();
   }
 
   get isEmpty(): boolean {
@@ -105,6 +115,7 @@ export class SketchBoard {
   private redraw(): void {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.paint(this.ctx);
+    this.onChange();
   }
 
   private paint(ctx: CanvasRenderingContext2D): void {

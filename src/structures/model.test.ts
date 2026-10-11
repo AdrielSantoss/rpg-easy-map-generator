@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ICON_HEIGHT, STRUCTURE_KINDS, structureAt, type Structure } from './model.ts';
+import { ICON_HEIGHT, STRUCTURE_KINDS, structureAt, structureFootprint, type Structure } from './model.ts';
 
 const village: Structure = { kind: 'village', x: 100, y: 100, name: 'Valdor' };
 const kingdom: Structure = { kind: 'kingdom', x: 200, y: 100, name: 'Reino de Morheim' };
@@ -7,6 +7,20 @@ const kingdom: Structure = { kind: 'kingdom', x: 200, y: 100, name: 'Reino de Mo
 describe('ICON_HEIGHT', () => {
   it('has a size for every kind', () => {
     for (const kind of STRUCTURE_KINDS) expect(ICON_HEIGHT[kind]).toBeGreaterThan(0);
+  });
+});
+
+describe('structureFootprint', () => {
+  it('covers the icon above the base point and the name below it', () => {
+    const box = structureFootprint(kingdom);
+    expect(box.x).toBe(kingdom.x);
+    expect(box.y - box.height / 2).toBeCloseTo(kingdom.y - ICON_HEIGHT.kingdom);
+    expect(box.y + box.height / 2).toBeGreaterThan(kingdom.y + 5);
+  });
+
+  it('is as wide as the longer of the icon and the name', () => {
+    expect(structureFootprint(village).width).toBeGreaterThanOrEqual(ICON_HEIGHT.village);
+    expect(structureFootprint(kingdom).width).toBeGreaterThan(structureFootprint(village).width);
   });
 });
 

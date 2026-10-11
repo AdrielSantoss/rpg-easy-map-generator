@@ -1,14 +1,27 @@
 import { normalizeDistribution, retarget, type TerrainDistribution } from './generator/distribution.ts';
 import { BRUSH_KINDS, HINT_RADIUS, hintAt, type BrushKind, type TerrainHint } from './generator/hints.ts';
 import { generateMap, type MapData } from './generator/index.ts';
+import { parseProject, serializeProject, type Project } from './project/project.ts';
+import {
+  applyRegionNames,
+  dodge,
+  findRegions,
+  nameRegion,
+  regionAt,
+  suggestRegionName,
+  type Region,
+  type RegionName,
+} from './regions/regions.ts';
 import { drawBrushTrail, TERRAIN_COLOR } from './render/hints.ts';
 import { renderMap } from './render/parchment.ts';
+import { drawRegions } from './render/regions.ts';
 import { drawRoads } from './render/roads.ts';
 import { drawSelection, drawStructures } from './render/structures.ts';
-import { structureAt, type Structure, type StructureKind } from './structures/model.ts';
+import { structureAt, structureFootprint, type Structure, type StructureKind } from './structures/model.ts';
 import { suggestName } from './structures/names.ts';
 import { distanceToRoad, findRoad, markRoad, planNetwork, type RoadPath } from './structures/roads.ts';
 import { DistributionPanel } from './ui/distribution.ts';
+import { RegionMenu } from './ui/region-menu.ts';
 import { SketchBoard, type Tool } from './ui/sketch.ts';
 import { StructureMenu } from './ui/structure-menu.ts';
 import { ZoomController } from './ui/zoom.ts';
@@ -37,6 +50,12 @@ interface Road {
 
 /** With the remove tool, a click this close (in cells) to a road picks it. */
 const ROAD_PICK_DISTANCE = 3;
+/** Stands in for the route of a road loaded from a save, until the map is generated. */
+const NO_ROUTE: RoadPath = { cells: new Int32Array(0), points: new Float32Array(0), bridges: [] };
+/** Where the project is kept in this browser. */
+const STORAGE_KEY = 'rpg-easy-map-generator:project';
+/** How long (ms) after the last change the project is saved. */
+const SAVE_DELAY = 500;
 
 const isTerrainKind = (tool: MapTool): tool is BrushKind =>
   (BRUSH_KINDS as readonly string[]).includes(tool ?? '');
@@ -77,6 +96,20 @@ const undoStack: (() => void)[] = [];
 /** Pixels per cell the map and overlay canvases are currently painted at. */
 let paintedScale = VIEW_SCALE;
 let sharpenTimer = 0;
+/** Regions found on the current map, with their suggested names. */
+let foundRegions: Region[] = [];
+/** Names the user gave to regions, replacing the suggestions. */
+let regionNames: RegionName[] = [];
+let showRegions = true;
+/** The region labels actually on screen: user names applied, empty when switched off. */
+let shownRegions: Region[] = [];
+/** The region whose name is being edited. */
+let editingRegion: Region | null = null;
+/** Off for the ?demo pages, so trying the demo does not overwrite the user's saved map. */
+const autosave = !new URLSearchParams(location.search).has('demo');
+/** True while a saved project is being loaded, when the half-loaded state must not be saved. */
+let restoring = false;
+let saveTimer = 0;
 
 overlay.width = GRID_W * VIEW_SCALE;
 overlay.height = GRID_H * VIEW_SCALE;
@@ -84,15 +117,16 @@ overlay.height = GRID_H * VIEW_SCALE;
 const brush = $('brush');
 const zoomReset = $('zoom-reset');
 const zoom = new ZoomController($('stage'), $('viewport'), {
-  // With no tool the left button pans, unless it is about to click a structure or its menu.
+  // With no tool the left button pans, unless it is about to click a structure, a region name or a menu.
   canLeftDrag: (e) =>
     document.body.dataset.mode === 'map' &&
     mapTool === null &&
     linkingFrom === null &&
-    !(e.target as Element).closest('#structure-menu') &&
-    !structureAt(structures, ...cellAt(e)),
+    !(e.target as Element).closest('.map-menu') &&
+    !structureAt(structures, ...cellAt(e)) &&
+    !regionAt(shownRegions, ...cellAt(e)),
   onChange: (view) => {
-    placeMenu();
+    placeMenus();
     zoomReset.hidden = view.scale === 1;
     zoomReset.textContent = `Zoom ${Math.round(view.scale * 100)}% · ver tudo`;
     sharpenSoon();
@@ -135,8 +169,109 @@ const structureMenu = new StructureMenu($('structure-menu'), {
   },
 });
 
+const regionMenu = new RegionMenu($('region-menu'), {
+  onRename: (name) => {
+    if (!editingRegion) return;
+    regionNames = nameRegion(regionNames, editingRegion, name, GRID_W);
+    closeRegionMenu();
+    redrawOverlay();
+  },
+  suggest: () => (editingRegion ? suggestRegionName(editingRegion.kind) : ''),
+});
+
 function randomSeed(): string {
   return Math.random().toString(36).slice(2, 8);
+}
+
+/** The region labels to show: the user's names applied, moved clear of structures, or none when switched off. */
+function layoutRegions(): Region[] {
+  if (!showRegions) return [];
+  return dodge(applyRegionNames(foundRegions, regionNames, GRID_W), structures.map(structureFootprint));
+}
+
+function openRegionMenu(region: Region): void {
+  // The user's names are filed under where the region was found, not where its
+  // label was moved to; the two lists are in the same order.
+  editingRegion = foundRegions[shownRegions.indexOf(region)] ?? region;
+  regionMenu.open(region.name);
+  placeMenus();
+}
+
+function closeRegionMenu(): void {
+  editingRegion = null;
+  regionMenu.close();
+}
+
+/** Everything the user made, in the form it is saved in. */
+function snapshot(): Project {
+  return {
+    version: 1,
+    seed: seedInput.value.trim(),
+    generated: document.body.dataset.mode === 'map' && currentMap !== null,
+    sketch: [...sketch.strokesData],
+    hints,
+    distribution,
+    structures,
+    roads: roads.map((road) => [structures.indexOf(road.from), structures.indexOf(road.to)]),
+    regionNames,
+    showRegions,
+  };
+}
+
+/** Saves the project in this browser shortly after the last change. */
+function saveSoon(): void {
+  if (!autosave || restoring) return;
+  clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, serializeProject(snapshot()));
+    } catch {
+      // Storage full or blocked: the map still works, it just will not survive a reload.
+    }
+  }, SAVE_DELAY);
+}
+
+/** Replaces everything on screen with a saved project. */
+async function restore(project: Project): Promise<void> {
+  restoring = true;
+  select(null);
+  closeRegionMenu();
+  undoStack.length = 0;
+  currentMap = null;
+  foundRegions = [];
+  shownRegions = [];
+  sketch.load(project.sketch);
+  seedInput.value = project.seed || randomSeed();
+  hints = project.hints;
+  distribution = project.distribution;
+  structures = project.structures;
+  // The routes are found again once the map exists.
+  roads = project.roads.map(([from, to]) => ({ from: structures[from], to: structures[to], path: NO_ROUTE }));
+  regionNames = project.regionNames;
+  showRegions = project.showRegions;
+  $('toggle-regions').classList.toggle('active', showRegions);
+  setMapTool(null);
+  zoom.reset();
+  setMode('sketch');
+  status.textContent = '';
+  if (project.generated) await generate();
+  restoring = false;
+  saveSoon();
+}
+
+function emptyProject(): Project {
+  return {
+    version: 1,
+    seed: randomSeed(),
+    generated: false,
+    sketch: [],
+    hints: [],
+    distribution: null,
+    structures: [],
+    roads: [],
+    regionNames: [],
+    showRegions: true,
+  };
 }
 
 function setMode(mode: 'sketch' | 'map'): void {
@@ -168,8 +303,12 @@ function isLand(map: MapData, x: number, y: number): boolean {
 }
 
 function redrawOverlay(): void {
+  // Nearly every change to the project ends in a redraw, so this is where it gets saved.
+  saveSoon();
+  shownRegions = layoutRegions();
   const ctx = overlay.getContext('2d')!;
   ctx.clearRect(0, 0, overlay.width, overlay.height);
+  drawRegions(ctx, shownRegions, paintedScale);
   drawRoads(
     ctx,
     roads.map((road) => road.path),
@@ -224,6 +363,7 @@ function generate(): Promise<void> {
           return;
         }
         currentMap = map;
+        foundRegions = findRegions(map);
 
         // The coast may have moved; structures left in the sea are dropped.
         const before = structures.length;
@@ -258,15 +398,18 @@ function cellAt(e: PointerEvent): [number, number] {
   return [((e.clientX - rect.left) / rect.width) * GRID_W, ((e.clientY - rect.top) / rect.height) * GRID_H];
 }
 
-function placeMenu(): void {
-  if (!selected || !structureMenu.isOpen) return;
+/** Puts an open menu beside the map position it belongs to, wherever zoom and pan have taken it. */
+function placeMenus(): void {
   const frame = $('stage').getBoundingClientRect();
   const rect = overlay.getBoundingClientRect();
-  const left = rect.left - frame.left + (selected.x / GRID_W) * rect.width + 16;
-  const top = rect.top - frame.top + (selected.y / GRID_H) * rect.height - 30;
-  const menu = $('structure-menu');
-  menu.style.left = `${Math.min(Math.max(8, left), frame.width - menu.offsetWidth - 8)}px`;
-  menu.style.top = `${Math.min(Math.max(8, top), frame.height - menu.offsetHeight - 8)}px`;
+  const place = (menu: HTMLElement, x: number, y: number, dx: number, dy: number) => {
+    const left = rect.left - frame.left + (x / GRID_W) * rect.width + dx;
+    const top = rect.top - frame.top + (y / GRID_H) * rect.height + dy;
+    menu.style.left = `${Math.min(Math.max(8, left), frame.width - menu.offsetWidth - 8)}px`;
+    menu.style.top = `${Math.min(Math.max(8, top), frame.height - menu.offsetHeight - 8)}px`;
+  };
+  if (selected && structureMenu.isOpen) place($('structure-menu'), selected.x, selected.y, 16, -30);
+  if (editingRegion && regionMenu.isOpen) place($('region-menu'), editingRegion.x, editingRegion.y, -75, 14);
 }
 
 /** Selects a structure and opens its menu, or clears the selection with null. */
@@ -274,9 +417,10 @@ function select(structure: Structure | null): void {
   selected = structure;
   linkingFrom = null;
   overlay.classList.remove('linking');
+  closeRegionMenu();
   if (structure) structureMenu.open(structure.name, structure.kind, roadsOf(structure).length);
   else structureMenu.close();
-  placeMenu();
+  placeMenus();
   redrawOverlay();
 }
 
@@ -396,7 +540,12 @@ function onMapPointerDown(e: PointerEvent): void {
     select(structure);
   } else {
     select(null);
-    if (!mapTool) return;
+    if (!mapTool) {
+      // With no tool in hand, clicking a region's name edits it.
+      const region = regionAt(shownRegions, x, y);
+      if (region) openRegionMenu(region);
+      return;
+    }
     if (!isLand(currentMap, x, y)) {
       status.textContent = 'Clique em terra firme.';
       return;
@@ -416,6 +565,12 @@ function onMapPointerMove(e: PointerEvent): void {
     brush.style.top = `${(y / GRID_H) * 100}%`;
     brush.style.borderColor = TERRAIN_COLOR[mapTool];
   }
+  // Show a hand over what a click would open: a structure's menu or a region's name.
+  const opensMenu =
+    !isTerrainKind(mapTool) &&
+    mapTool !== 'remove' &&
+    (structureAt(structures, x, y) !== null || (mapTool === null && regionAt(shownRegions, x, y) !== null));
+  overlay.classList.toggle('clickable', opensMenu);
   if (!stroke || !currentMap) return;
   const last = stroke[stroke.length - 1];
   if (Math.hypot(x - last.x, y - last.y) < BRUSH_SPACING || !isLand(currentMap, x, y)) return;
@@ -441,6 +596,7 @@ function exportPng(): void {
   const canvas = document.createElement('canvas');
   renderMap(canvas, currentMap, EXPORT_SCALE);
   const ctx = canvas.getContext('2d')!;
+  drawRegions(ctx, shownRegions, EXPORT_SCALE);
   drawRoads(
     ctx,
     roads.map((road) => road.path),
@@ -518,12 +674,13 @@ $('clear-hints').addEventListener('click', () => {
   generate();
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && (selected || linkingFrom)) {
+  if (e.key === 'Escape' && (selected || linkingFrom || editingRegion)) {
     if (linkingFrom) status.textContent = 'Estrada cancelada.';
     select(null);
     return;
   }
-  if (!(e.ctrlKey || e.metaKey) || e.key !== 'z' || e.target === seedInput) return;
+  // In a text field Ctrl+Z belongs to the typing, not to the map.
+  if (!(e.ctrlKey || e.metaKey) || e.key !== 'z' || e.target instanceof HTMLInputElement) return;
   e.preventDefault();
   if (document.body.dataset.mode === 'sketch') {
     sketch.undo();
@@ -533,12 +690,57 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+$('toggle-regions').addEventListener('click', () => {
+  showRegions = !showRegions;
+  $('toggle-regions').classList.toggle('active', showRegions);
+  closeRegionMenu();
+  redrawOverlay();
+});
+sketch.onChange = saveSoon;
+seedInput.addEventListener('input', saveSoon);
+
+$('save-file').addEventListener('click', () => {
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([serializeProject(snapshot())], { type: 'application/json' }));
+  link.download = `mapa-${seedInput.value.trim() || 'projeto'}.json`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+});
+const fileInput = $<HTMLInputElement>('file-input');
+$('open-file').addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', async () => {
+  const file = fileInput.files?.[0];
+  // Cleared so that choosing the same file again still counts as a change.
+  fileInput.value = '';
+  if (!file) return;
+  const project = parseProject(await file.text());
+  if (!project) {
+    status.textContent = `"${file.name}" não é um projeto deste gerador.`;
+    return;
+  }
+  await restore(project);
+});
+$('new-project').addEventListener('click', () => {
+  if (confirm('Apagar o mapa atual e começar um novo?')) restore(emptyProject());
+});
+
 seedInput.value = randomSeed();
 
 // ?demo opens straight on a generated example map with a few structures on it;
 // ?demo&hints also paints some terrain, and
 // ?demo&shares applies a custom terrain distribution.
 const params = new URLSearchParams(location.search);
+if (!params.has('demo')) {
+  // Pick up where the user left off in this browser.
+  let saved: string | null = null;
+  try {
+    saved = localStorage.getItem(STORAGE_KEY);
+  } catch {
+    // Storage blocked: start fresh.
+  }
+  const project = saved ? parseProject(saved) : null;
+  if (project) restore(project);
+}
 if (params.has('demo')) {
   seedInput.value = params.get('demo') || 'demo';
   sketch.loadExample();

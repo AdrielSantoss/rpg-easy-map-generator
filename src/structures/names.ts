@@ -14,10 +14,16 @@ const NAME_END = [
 ];
 const DUNGEON_WORDS = ['Covil', 'Cripta', 'Gruta', 'Abismo'];
 
+const pick = <T>(list: readonly T[], rng: Rng): T => list[Math.floor(rng() * list.length)];
+
+/** An invented proper name, such as "Valdoria" or "Morheim". */
+export function fantasyName(rng: Rng = Math.random): string {
+  return pick(NAME_START, rng) + pick(NAME_MIDDLE, rng) + pick(NAME_END, rng);
+}
+
 /** Suggests a fantasy name fitting the kind of place. */
 export function suggestName(kind: StructureKind, rng: Rng = Math.random): string {
-  const pick = <T>(list: readonly T[]): T => list[Math.floor(rng() * list.length)];
-  const name = pick(NAME_START) + pick(NAME_MIDDLE) + pick(NAME_END);
+  const name = fantasyName(rng);
   switch (kind) {
     case 'kingdom':
       return `Reino de ${name}`;
@@ -28,7 +34,7 @@ export function suggestName(kind: StructureKind, rng: Rng = Math.random): string
     case 'ruins':
       return `Ruínas de ${name}`;
     case 'dungeon':
-      return `${pick(DUNGEON_WORDS)} de ${name}`;
+      return `${pick(DUNGEON_WORDS, rng)} de ${name}`;
     default:
       return name;
   }

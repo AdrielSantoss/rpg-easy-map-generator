@@ -63,7 +63,8 @@
             <div id="brush" hidden></div>
           </div>
           <button id="zoom-reset" title="Voltar a ver o mapa inteiro" hidden></button>
-          <div id="structure-menu" hidden></div>
+          <div id="structure-menu" class="map-menu" hidden></div>
+          <div id="region-menu" class="map-menu" hidden></div>
         </div>
         <p id="status" role="status" aria-live="polite"></p>
       </div>
@@ -80,8 +81,28 @@
           <button id="open-distribution" title="Define quantos % do mapa cada terreno ocupa">
             Distribuição do terreno
           </button>
+          <button
+            id="toggle-regions"
+            class="active"
+            title="Mostra ou esconde os nomes de mares, florestas, montanhas…"
+          >
+            Nomes das regiões
+          </button>
           <button id="back">Editar esboço</button>
           <button id="export">Exportar PNG</button>
+        </section>
+        <section>
+          <h2>Projeto</h2>
+          <button
+            id="save-file"
+            title="Baixa um arquivo com tudo: esboço, terreno, estruturas, estradas e nomes"
+          >
+            Salvar arquivo
+          </button>
+          <button id="open-file" title="Abre um arquivo de projeto salvo antes">Abrir arquivo</button>
+          <input id="file-input" type="file" accept=".json,application/json" hidden />
+          <button id="new-project" class="danger" title="Apaga tudo e começa do zero">Novo mapa</button>
+          <p class="hint">O trabalho é salvo sozinho neste navegador.</p>
         </section>
       </aside>
     </main>

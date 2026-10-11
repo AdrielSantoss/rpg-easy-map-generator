@@ -118,7 +118,7 @@ button:disabled {
   cursor: wait;
 }
 
-#structure-menu button:disabled {
+.map-menu button:disabled {
   cursor: default;
 }
 
@@ -264,6 +264,12 @@ dialog p {
   font-size: 0.85rem;
 }
 
+.panel .hint {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
 .slider-note {
   margin: -4px 0 0;
   color: var(--muted);
@@ -317,7 +323,7 @@ dialog p {
   background: rgb(54 47 41 / 90%);
 }
 
-#structure-menu {
+.map-menu {
   position: absolute;
   display: flex;
   flex-direction: column;
@@ -330,11 +336,11 @@ dialog p {
   box-shadow: 0 6px 20px rgb(0 0 0 / 50%);
 }
 
-#structure-menu[hidden] {
+.map-menu[hidden] {
   display: none;
 }
 
-#structure-menu strong {
+.map-menu strong {
   margin-bottom: 2px;
   overflow: hidden;
   font-size: 0.85rem;
@@ -342,7 +348,7 @@ dialog p {
   white-space: nowrap;
 }
 
-#structure-menu button {
+.map-menu button {
   padding: 4px 8px;
   font-size: 0.85rem;
 }
@@ -394,6 +400,10 @@ button.danger {
 
 #overlay.removing {
   cursor: not-allowed;
+}
+
+#overlay.clickable {
+  cursor: pointer;
 }
 
 body[data-mode='sketch'] #map,

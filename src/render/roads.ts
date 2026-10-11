@@ -5,7 +5,9 @@ const PAPER = 'rgba(236, 221, 182, 0.8)';
 const INK = 'rgb(58, 44, 30)';
 
 /** Draws roads as dashed tracks, with a small bridge wherever one crosses a river. */
-export function drawRoads(ctx: CanvasRenderingContext2D, roads: readonly RoadPath[], scale: number): void {
+export function drawRoads(ctx: CanvasRenderingContext2D, all: readonly RoadPath[], scale: number): void {
+  // A road just loaded from a save has no route until the map is generated.
+  const roads = all.filter((road) => road.points.length >= 4);
   ctx.save();
   ctx.scale(scale, scale);
   ctx.lineJoin = 'round';
