@@ -1,4 +1,4 @@
-import { sstep } from '../generator/grid.ts';
+import { boxBlur, sstep } from '../generator/grid.ts';
 import { Biome, type MapData } from '../generator/index.ts';
 import { createNoise2D } from '../generator/noise.ts';
 import { seededRng, type Rng } from '../generator/rng.ts';
@@ -11,6 +11,9 @@ const SHALLOW: RGB = [208, 208, 178];
 const DEEP: RGB = [181, 191, 168];
 const RIPPLE: RGB = [84, 104, 106];
 const FOREST_WASH: RGB = [172, 186, 124];
+/** Swamp ground: duller and greyer than forest, with darker stagnant patches. */
+const SWAMP_WASH: RGB = [146, 158, 134];
+const SWAMP_MURK: RGB = [104, 122, 110];
 const SAND_WASH: RGB = [240, 212, 142];
 const ROCK_WASH: RGB = [198, 176, 142];
 const SNOW_WASH: RGB = [242, 240, 230];
@@ -59,6 +62,13 @@ function paintBase(ctx: CanvasRenderingContext2D, map: MapData, scale: number): 
   const data = img.data;
   const rng = seededRng(map.seed + ':paper');
   const paper = createNoise2D(rng);
+  // Biomes are per cell; blurring the swamp cells gives the wash a soft edge.
+  const bog = boxBlur(
+    Float32Array.from(map.biome, (b) => (b === Biome.Swamp ? 1 : 0)),
+    w,
+    h,
+    2,
+  );
 
   for (let py = 0; py < H; py++) {
     const gy = (py + 0.5) / scale - 0.5;
@@ -92,6 +102,11 @@ function paintBase(ctx: CanvasRenderingContext2D, map: MapData, scale: number): 
         const t = sample(temperature);
         const high = sstep(hillLevel, mountainLevel, e);
         mix(FOREST_WASH, 0.6 * sstep(0.46, 0.62, m) * (1 - high));
+        const boggy = sample(bog);
+        if (boggy > 0) {
+          mix(SWAMP_WASH, 0.8 * boggy);
+          mix(SWAMP_MURK, 0.45 * boggy * sstep(-0.1, 0.5, paper(gx / 7 + 31, gy / 7)));
+        }
         mix(SAND_WASH, 0.6 * sstep(0.56, 0.68, t) * sstep(0.48, 0.36, m) * (1 - high));
         mix(ROCK_WASH, 0.55 * high);
         mix(SNOW_WASH, 0.75 * sstep(0.28, 0.16, t));
@@ -184,7 +199,7 @@ function drawIcons(ctx: CanvasRenderingContext2D, map: MapData): void {
   scatter(Biome.Forest, 3.4, 0.95, 1.5, 1.4, () => 3.1 + rng() * 1);
   scatter(Biome.Taiga, 3.2, 0.95, 1.5, 1.4, () => 3.6 + rng() * 1.1);
   scatter(Biome.Desert, 9, 0.8, 2, 2, () => 2 + rng());
-  scatter(Biome.Swamp, 5.5, 0.9, 1.5, 1.5, () => 1.6 + rng() * 0.6);
+  scatter(Biome.Swamp, 5, 0.92, 1.5, 1.5, () => 1.6 + rng() * 0.6);
   scatter(Biome.Plains, 10, 0.5, 2, 1.5, () => 1.2 + rng() * 0.5);
 
   // Painter's order: icons lower on the map overlap the ones behind them.
@@ -207,12 +222,12 @@ function drawIcons(ctx: CanvasRenderingContext2D, map: MapData): void {
         drawDune(ctx, icon.x, icon.y, icon.size);
         break;
       case Biome.Swamp:
-        drawReeds(ctx, icon.x, icon.y, icon.size, true);
+        drawSwamp(ctx, icon.x, icon.y, icon.size, rng);
         break;
       case Biome.Plains:
         // A snowed-over plain shows drifts instead of grass.
         if (icon.snowy) drawFrost(ctx, icon.x, icon.y, icon.size);
-        else drawReeds(ctx, icon.x, icon.y, icon.size, false);
+        else drawReeds(ctx, icon.x, icon.y, icon.size);
         break;
     }
   }
@@ -356,8 +371,8 @@ function drawDune(ctx: CanvasRenderingContext2D, x: number, y: number, size: num
   ctx.fillRect(x - size * 0.4, y + size * 0.8, 0.35, 0.35);
 }
 
-function drawReeds(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, wet: boolean): void {
-  ctx.strokeStyle = wet ? 'rgba(62, 78, 52, 0.9)' : 'rgba(92, 96, 56, 0.75)';
+function drawReeds(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {
+  ctx.strokeStyle = 'rgba(92, 96, 56, 0.75)';
   ctx.lineWidth = 0.28;
   ctx.beginPath();
   ctx.moveTo(x, y);
@@ -367,12 +382,93 @@ function drawReeds(ctx: CanvasRenderingContext2D, x: number, y: number, size: nu
   ctx.moveTo(x, y);
   ctx.lineTo(x + size * 0.6, y - size * 0.8);
   ctx.stroke();
-  if (wet) {
-    ctx.strokeStyle = 'rgba(66, 92, 108, 0.75)';
+}
+
+const SWAMP_WATER = 'rgba(52, 80, 96, 0.8)';
+const SWAMP_PLANT = 'rgb(52, 66, 44)';
+const SWAMP_WOOD = 'rgb(70, 54, 40)';
+
+/** One of the things that mark a swamp: cattails, a stagnant pool, a dead tree or standing water. */
+function drawSwamp(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, rng: Rng): void {
+  const pick = rng();
+  ctx.lineCap = 'round';
+
+  const waterLine = (cx: number, cy: number, half: number) => {
+    ctx.strokeStyle = SWAMP_WATER;
+    ctx.lineWidth = 0.28;
     ctx.beginPath();
-    ctx.moveTo(x - size * 1.1, y + 0.5);
-    ctx.lineTo(x + size * 1.1, y + 0.5);
+    ctx.moveTo(cx - half, cy);
+    ctx.lineTo(cx + half, cy);
     ctx.stroke();
+  };
+
+  if (pick < 0.38) {
+    // Cattails: stalks with a dark seed head, standing in water.
+    waterLine(x, y + 0.4, size * 1.2);
+    for (const lean of [-0.45, 0, 0.5]) {
+      const height = size * (1.25 + 0.35 * rng());
+      const topX = x + lean * size;
+      const topY = y - height;
+      ctx.strokeStyle = SWAMP_PLANT;
+      ctx.lineWidth = 0.26;
+      ctx.beginPath();
+      ctx.moveTo(x + lean * size * 0.35, y);
+      ctx.lineTo(topX, topY);
+      ctx.stroke();
+      ctx.fillStyle = SWAMP_WOOD;
+      ctx.beginPath();
+      ctx.ellipse(topX, topY + size * 0.3, size * 0.16, size * 0.36, lean * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (pick < 0.68) {
+    // A stagnant pool, with a ripple and a tuft of reeds on its edge.
+    const rx = size * (1.3 + 0.5 * rng());
+    const ry = rx * 0.42;
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgb(168, 188, 180)';
+    ctx.fill();
+    ctx.strokeStyle = SWAMP_WATER;
+    ctx.lineWidth = 0.3;
+    ctx.stroke();
+    ctx.lineWidth = 0.22;
+    ctx.beginPath();
+    ctx.ellipse(x - rx * 0.1, y + ry * 0.05, rx * 0.5, ry * 0.4, 0, Math.PI * 0.1, Math.PI * 0.9);
+    ctx.stroke();
+    ctx.strokeStyle = SWAMP_PLANT;
+    ctx.lineWidth = 0.26;
+    ctx.beginPath();
+    for (const lean of [-0.3, 0, 0.35]) {
+      ctx.moveTo(x + rx * 0.75, y - ry * 0.3);
+      ctx.lineTo(x + rx * 0.75 + lean * size, y - ry * 0.3 - size * 0.8);
+    }
+    ctx.stroke();
+  } else if (pick < 0.86) {
+    // A dead tree: bare trunk and a few crooked branches.
+    const height = size * 2.1;
+    const lean = (rng() - 0.5) * size * 0.5;
+    waterLine(x, y + 0.4, size * 0.9);
+    ctx.strokeStyle = SWAMP_WOOD;
+    ctx.lineWidth = 0.42;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + lean, y - height);
+    ctx.stroke();
+    ctx.lineWidth = 0.3;
+    ctx.beginPath();
+    ctx.moveTo(x + lean * 0.5, y - height * 0.5);
+    ctx.lineTo(x + lean * 0.5 - size * 0.75, y - height * 0.82);
+    ctx.lineTo(x + lean * 0.5 - size * 0.7, y - height * 1.02);
+    ctx.moveTo(x + lean * 0.7, y - height * 0.68);
+    ctx.lineTo(x + lean * 0.7 + size * 0.7, y - height * 0.95);
+    ctx.moveTo(x + lean * 0.35, y - height * 0.33);
+    ctx.lineTo(x + lean * 0.35 + size * 0.5, y - height * 0.5);
+    ctx.stroke();
+  } else {
+    // Standing water: a few staggered lines.
+    waterLine(x - size * 0.3, y - size * 0.45, size * 0.8);
+    waterLine(x + size * 0.4, y, size * 1.1);
+    waterLine(x - size * 0.2, y + size * 0.45, size * 0.6);
   }
 }
 
