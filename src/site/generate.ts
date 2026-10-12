@@ -73,6 +73,31 @@ export interface Place {
   y: number;
 }
 
+export type PropKind =
+  | 'fountain'
+  | 'statue'
+  | 'bench'
+  | 'lamp'
+  | 'planter'
+  | 'bigtree'
+  | 'cart'
+  | 'crates'
+  | 'haystack'
+  | 'tombstone'
+  | 'bush'
+  | 'flowers'
+  | 'rubble';
+
+/** Something small standing in the open: a fountain, a bench, a cart, a flower bed. */
+export interface Prop {
+  kind: PropKind;
+  /** Its middle, in cells. */
+  x: number;
+  y: number;
+  /** Turn, in radians, for the ones with a direction. */
+  angle: number;
+}
+
 /** A wall around a rectangle of cells, running through the middle of the cells of its ring. */
 export interface Wall {
   x: number;
@@ -111,6 +136,7 @@ export interface Site {
   terrain: SiteTerrain;
   trees: { x: number; y: number; r: number }[];
   rocks: { x: number; y: number; r: number }[];
+  props: Prop[];
   boats: { x: number; y: number; vertical: boolean }[];
   /** Doors of a dungeon: the cell, and whether the door stands across a north-south passage. */
   doors: { x: number; y: number; vertical: boolean }[];
@@ -210,15 +236,17 @@ interface TownPlan {
   fields?: boolean;
   /** Stalls on the main square. */
   stalls: number;
+  /** A block kept as a public garden. */
+  park?: boolean;
   squareName: readonly string[];
   landmarks: readonly Landmark[];
 }
 
 const TOWN: Record<'village' | 'city' | 'kingdom' | 'port' | 'ruins', TownPlan> = {
   village: {
-    w: 64,
-    h: 48,
-    margin: 13,
+    w: 52,
+    h: 36,
+    margin: 7,
     avenue: 1,
     square: [3, 2],
     block: [12, 9],
@@ -238,9 +266,9 @@ const TOWN: Record<'village' | 'city' | 'kingdom' | 'port' | 'ruins', TownPlan> 
     ],
   },
   city: {
-    w: 80,
-    h: 56,
-    margin: 8,
+    w: 72,
+    h: 48,
+    margin: 4,
     avenue: 2,
     square: [5, 4],
     block: [11, 8],
@@ -248,6 +276,7 @@ const TOWN: Record<'village' | 'city' | 'kingdom' | 'port' | 'ruins', TownPlan> 
     wall: true,
     river: 0.45,
     stalls: 7,
+    park: true,
     squareName: ['Praça do Mercado', 'Praça da Fonte', 'Largo dos Mercadores'],
     landmarks: [
       fixed('hall', 5, 4, 'Prefeitura'),
@@ -262,9 +291,9 @@ const TOWN: Record<'village' | 'city' | 'kingdom' | 'port' | 'ruins', TownPlan> 
     ],
   },
   kingdom: {
-    w: 104,
-    h: 72,
-    margin: 8,
+    w: 96,
+    h: 64,
+    margin: 4,
     avenue: 2,
     square: [6, 5],
     block: [11, 8],
@@ -273,6 +302,7 @@ const TOWN: Record<'village' | 'city' | 'kingdom' | 'port' | 'ruins', TownPlan> 
     river: 0.5,
     castle: true,
     stalls: 10,
+    park: true,
     squareName: ['Praça Real', 'Praça da Coroa', 'Grande Mercado'],
     landmarks: [
       temple('Catedral', 6, 8),
@@ -290,9 +320,9 @@ const TOWN: Record<'village' | 'city' | 'kingdom' | 'port' | 'ruins', TownPlan> 
     ],
   },
   port: {
-    w: 80,
-    h: 56,
-    margin: 8,
+    w: 72,
+    h: 50,
+    margin: 4,
     avenue: 2,
     square: [4, 3],
     block: [11, 8],
@@ -313,9 +343,9 @@ const TOWN: Record<'village' | 'city' | 'kingdom' | 'port' | 'ruins', TownPlan> 
     ],
   },
   ruins: {
-    w: 56,
-    h: 40,
-    margin: 8,
+    w: 48,
+    h: 32,
+    margin: 4,
     avenue: 1,
     square: [3, 3],
     block: [10, 8],
@@ -507,6 +537,7 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
     terrain: context.terrain,
     trees: [],
     rocks: [],
+    props: [],
     boats: [],
     doors: [],
   };
@@ -514,8 +545,8 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
 
   // The town proper, with open country around it; a port has the sea to the south.
   const margin = plan.margin;
-  const shore = (x: number) => h - 9 + Math.round(noise(x * 0.07, 3) * 1.5);
-  const core: Rect = { x: margin, y: margin, w: w - 2 * margin, h: h - margin - (plan.coast ? 14 : margin) };
+  const shore = (x: number) => h - 7 + Math.round(noise(x * 0.07, 3) * 1.5);
+  const core: Rect = { x: margin, y: margin, w: w - 2 * margin, h: h - margin - (plan.coast ? 12 : margin) };
   const coreRight = core.x + core.w;
   const coreBottom = core.y + core.h;
   if (plan.coast) {
@@ -619,13 +650,51 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
     site.buildings.push(building({ x: square.x + 1, y: square.y + square.h - 2, w: 1, h: 1 }, 'well', rng));
   }
 
-  // The notable buildings take the best spots: near the square, or far from it.
   const distance = (rect: Rect) => Math.hypot(middle(rect).x - center.x, middle(rect).y - center.y);
+  const onEdge = (rect: Rect) =>
+    Number(rect.x <= core.x || rect.x + rect.w >= coreRight) +
+    Number(rect.y <= core.y || rect.y + rect.h >= coreBottom);
+  const reach = Math.max(...blocks.map(distance));
+
+  // A public garden takes one block, a little way from the square.
+  const parks: Rect[] = [];
+  if (plan.park && !ruin) {
+    const garden = blocks
+      .filter((block) => block.w * block.h >= 24 && onEdge(block) === 0)
+      .sort((a, b) => Math.abs(distance(a) - reach * 0.4) - Math.abs(distance(b) - reach * 0.4))[0];
+    if (garden) {
+      parks.push(garden);
+      blocks.splice(blocks.indexOf(garden), 1);
+      ground.claim(garden);
+      const pond = middle(garden);
+      for (let dy = -1; dy <= 0; dy++) {
+        for (let dx = -1; dx <= 0; dx++)
+          ground.tiles[(Math.floor(pond.y) + dy) * w + Math.floor(pond.x) + dx] = TILE.water;
+      }
+      site.places.push({
+        name: pick(['Jardim das Rosas', 'Parque do Carvalho', 'Jardim do Lago', 'Bosque dos Namorados'], rng),
+        x: garden.x + 1,
+        y: garden.y + 1,
+      });
+    }
+  }
+
+  // The notable buildings take the best spots: by the square, or a few streets
+  // away from it, but never out in a corner of the town, where nobody would look.
   const byDistance = [...blocks].sort((a, b) => distance(a) - distance(b));
   const perBlock = new Map<Rect, number>();
+  const graveyards: Rect[] = [];
   for (const landmark of plan.landmarks) {
+    // How far from the square this one wants to be, and how bad a block at the edge is.
+    const wanted = landmark.far ? reach * 0.5 : 0;
+    const order = [...byDistance].sort(
+      (a, b) =>
+        Math.abs(distance(a) - wanted) +
+        onEdge(a) * reach -
+        (Math.abs(distance(b) - wanted) + onEdge(b) * reach),
+    );
     let best: Rect | null = null;
-    for (const block of landmark.far ? [...byDistance].reverse() : byDistance) {
+    for (const block of order) {
       if ((perBlock.get(block) ?? 0) >= 2) continue;
       for (const [lw, lh] of [
         [landmark.w, landmark.h],
@@ -635,8 +704,8 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
           for (let x = block.x; x + lw <= block.x + block.w; x++) {
             const spot = { x, y, w: lw, h: lh };
             if (!ground.free(spot)) continue;
-            const better = !best || distance(spot) < distance(best) !== Boolean(landmark.far);
-            if (better) best = spot;
+            // Within the block, the side that looks toward the square.
+            if (!best || distance(spot) < distance(best)) best = spot;
           }
         }
       }
@@ -648,6 +717,19 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
     // A town too small for everything goes without what did not fit.
     if (!best) continue;
     ground.claim(best);
+    if (landmark.kind === 'temple') {
+      const lot: Rect = best;
+      const plot = [
+        { x: lot.x + lot.w, y: lot.y, w: 2, h: 3 },
+        { x: lot.x - 2, y: lot.y, w: 2, h: 3 },
+        { x: lot.x, y: lot.y + lot.h, w: 3, h: 2 },
+        { x: lot.x, y: lot.y - 2, w: 3, h: 2 },
+      ].find((rect) => rect.x >= core.x && rect.y >= core.y && ground.free(rect));
+      if (plot) {
+        ground.claim(plot);
+        graveyards.push(plot);
+      }
+    }
     site.buildings.push(building(best, landmark.kind, rng, ruin));
     site.places.push({ name: landmark.name(rng), ...middle(best) });
   }
@@ -680,8 +762,14 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
         }
         if (!lot) continue;
         ground.claim(lot);
-        // A yard, or what is left of a house that is gone.
-        if (rng() < plan.empty) continue;
+        // A yard, sometimes dug into a kitchen garden; or what is left of a house that is gone.
+        if (rng() < plan.empty) {
+          const dug = rng() < (plan.fields ? 0.4 : 0.2);
+          if (dug && !ruin && !BARREN.includes(context.terrain)) {
+            ground.fill({ ...lot, w: Math.min(lot.w, 2), h: Math.min(lot.h, 2) }, TILE.field);
+          }
+          continue;
+        }
         site.buildings.push(building(lot, 'house', rng, ruin));
       }
     }
@@ -689,16 +777,26 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
 
   if (plan.wall) site.walls.push(wallAround(ground, core, rng, ruin ? 0.3 : 0));
 
+  const farmed: Rect[] = [];
   if (plan.fields && !BARREN.includes(context.terrain)) {
     // Farmland around the village, with a farmhouse here and there.
     for (let i = 0; i < 40; i++) {
       const field: Rect = {
-        x: between(1, w - 10, rng),
-        y: between(1, h - 8, rng),
-        w: between(5, 9, rng),
-        h: between(4, 6, rng),
+        x: between(0, w - 5, rng),
+        y: between(0, h - 4, rng),
+        w: between(4, 8, rng),
+        h: between(3, 5, rng),
       };
-      const apart = { x: field.x - 1, y: field.y - 1, w: field.w + 2, h: field.h + 2 };
+      if (field.x + field.w > w || field.y + field.h > h) continue;
+      // Clear of whatever is next to it, as far as the map goes.
+      const ax = Math.max(0, field.x - 1);
+      const ay = Math.max(0, field.y - 1);
+      const apart = {
+        x: ax,
+        y: ay,
+        w: Math.min(w, field.x + field.w + 1) - ax,
+        h: Math.min(h, field.y + field.h + 1) - ay,
+      };
       const outside =
         field.x + field.w < core.x ||
         field.x > coreRight ||
@@ -706,6 +804,7 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
         field.y > coreBottom;
       if (!outside || !ground.free(apart)) continue;
       ground.fill(field, TILE.field);
+      farmed.push(field);
       const house: Rect = { x: field.x + field.w + 1, y: field.y, w: 2, h: 2 };
       if (rng() < 0.5 && ground.free({ x: house.x - 1, y: house.y - 1, w: 4, h: 4 })) {
         ground.claim(house);
@@ -725,21 +824,158 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
     }
   }
 
-  // Woods outside, and the odd tree in a yard.
   const built = new Uint8Array(w * h);
   for (const b of site.buildings) {
     for (let y = b.y; y < b.y + b.h; y++) for (let x = b.x; x < b.x + b.w; x++) built[y * w + x] = 1;
   }
+  /** Squares that already hold something small. */
+  const taken = new Uint8Array(w * h);
+  const clear = (x: number, y: number) => ground.inside(x, y) && !built[y * w + x] && !taken[y * w + x];
+  /** Stands a prop in the middle of a square, if nothing is there yet. */
+  const put = (kind: PropKind, x: number, y: number, angle = 0): boolean => {
+    if (!clear(x, y)) return false;
+    taken[y * w + x] = 1;
+    site.props.push({ kind, x: x + 0.5, y: y + 0.5, angle });
+    return true;
+  };
+  const paved = plan.stalls > 0;
+
+  // The main square: a fountain where the roads cross, and what a square has around it.
+  if (ruin) {
+    for (let i = 0; i < 8; i++) {
+      put(
+        'rubble',
+        between(square.x, square.x + square.w - 1, rng),
+        between(square.y, square.y + square.h - 1, rng),
+      );
+    }
+  } else if (paved) {
+    const fx = cx + avenue / 2;
+    const fy = cy + avenue / 2;
+    site.props.push({ kind: 'fountain', x: fx, y: fy, angle: 0 });
+    for (let y = cy - 1; y <= cy + avenue; y++)
+      for (let x = cx - 1; x <= cx + avenue; x++) taken[y * w + x] = 1;
+    for (const [dx, dy, angle] of [
+      [0, -2.3, 0],
+      [0, 2.3, 0],
+      [-2.3, 0, Math.PI / 2],
+      [2.3, 0, Math.PI / 2],
+    ]) {
+      site.props.push({ kind: 'bench', x: fx + dx, y: fy + dy, angle });
+    }
+    put('statue', square.x + square.w - 2, square.y + 1);
+    for (const [x, y] of [
+      [square.x, square.y],
+      [square.x + square.w - 1, square.y],
+      [square.x, square.y + square.h - 1],
+      [square.x + square.w - 1, square.y + square.h - 1],
+    ]) {
+      put('lamp', x, y);
+    }
+    // Trees in tubs along the sides, and the stallholders' crates.
+    for (let x = square.x + 2; x < square.x + square.w - 1; x += 3) {
+      if (x < cx - 1 || x > cx + avenue) {
+        put('planter', x, square.y);
+        put('planter', x, square.y + square.h - 1);
+      }
+    }
+    for (let y = square.y + 2; y < square.y + square.h - 1; y += 3) {
+      if (y < cy - 1 || y > cy + avenue) {
+        put('planter', square.x, y);
+        put('planter', square.x + square.w - 1, y);
+      }
+    }
+    for (const stall of site.buildings.filter((b) => b.kind === 'stall')) {
+      if (rng() < 0.6)
+        put(rng() < 0.3 ? 'cart' : 'crates', stall.x + (rng() < 0.5 ? 1 : -1), stall.y, rng() * 3);
+    }
+  } else {
+    // A village green: the old tree, a bench under it, a cart by the well.
+    site.props.push({ kind: 'bigtree', x: square.x + square.w - 1.6, y: square.y + 1.6, angle: 0 });
+    taken[(square.y + 1) * w + square.x + square.w - 2] = 1;
+    put('bench', square.x + square.w - 3, square.y + 2, Math.PI / 2);
+    put('bench', square.x + square.w - 2, square.y + 3);
+    put('cart', square.x + 2, square.y + square.h - 2, 0.4);
+    put('crates', square.x + 1, square.y + 1);
+  }
+
+  // Lamps along the two main streets of a paved town.
+  if (paved) {
+    for (let x = core.x + 2; x < coreRight - 1; x += 5) {
+      if (x >= square.x - 1 && x <= square.x + square.w) continue;
+      site.props.push({ kind: 'lamp', x: x + 0.5, y: x % 2 ? cy + 0.18 : cy + avenue - 0.18, angle: 0 });
+    }
+    for (let y = castle ? castle.y + castle.h + 2 : core.y + 2; y < coreBottom - 1; y += 5) {
+      if (y >= square.y - 1 && y <= square.y + square.h) continue;
+      site.props.push({ kind: 'lamp', x: y % 2 ? cx + 0.18 : cx + avenue - 0.18, y: y + 0.5, angle: 0 });
+    }
+  }
+
+  // Headstones in the graveyard beside each temple.
+  for (const plot of graveyards) {
+    for (let y = plot.y; y < plot.y + plot.h; y++) {
+      for (let x = plot.x; x < plot.x + plot.w; x++) if (rng() < 0.8) put('tombstone', x, y);
+    }
+  }
+
+  // What the countryside and the harbor leave lying about.
+  for (const field of farmed) {
+    if (rng() < 0.7) put('haystack', field.x, field.y);
+    if (rng() < 0.4) put('haystack', field.x + 1, field.y);
+  }
+  if (plan.coast) {
+    for (let i = 0; i < 26; i++) {
+      const x = between(core.x, coreRight - 1, rng);
+      const y = between(coreBottom + 3, coreBottom + 4, rng);
+      if (ground.tiles[y * w + x] === TILE.plaza) put(rng() < 0.2 ? 'cart' : 'crates', x, y, rng() * 3);
+    }
+  }
+  if (castle) {
+    put('cart', castle.x + 3, castle.y + castle.h - 3, 0.3);
+    put('crates', castle.x + castle.w - 4, castle.y + castle.h - 3);
+    put('haystack', castle.x + 2, castle.y + castle.h - 5);
+    for (const x of [cx - 2, cx + avenue + 1]) put('lamp', x, castle.y + castle.h - 2);
+  }
+
+  // Woods outside; in town, trees along the streets and in the yards, bushes and flower beds.
+  const arid = context.terrain === 'desert' || context.terrain === 'snow';
+  const beside = (x: number, y: number, tile: number) =>
+    ground.get(x + 1, y) === tile ||
+    ground.get(x - 1, y) === tile ||
+    ground.get(x, y + 1) === tile ||
+    ground.get(x, y - 1) === tile;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      if (ground.tiles[y * w + x] !== TILE.grass || built[y * w + x]) continue;
+      const index = y * w + x;
+      if (ground.tiles[index] !== TILE.grass || built[index] || taken[index]) continue;
       const inCore = x >= core.x - 1 && x <= coreRight && y >= core.y - 1 && y <= coreBottom;
-      if (ground.used[y * w + x] === WALLED) continue;
-      if (!inCore && !ground.used[y * w + x] && wild(site, ground, noise, rng, x, y)) continue;
+      if (ground.used[index] === WALLED) continue;
+      if (!inCore && !ground.used[index] && wild(site, ground, noise, rng, x, y)) continue;
       const wooded = fbm(noise, x * 0.05 + 40, y * 0.05, 3) > 0.05;
-      const chance = (inCore ? (ruin ? 0.3 : 0.07) : wooded ? 0.55 : 0.04) * WOODS[context.terrain];
-      if (rng() < chance)
+      const inPark = parks.some(
+        (park) => x >= park.x && x < park.x + park.w && y >= park.y && y < park.y + park.h,
+      );
+      const byStreet = inCore && beside(x, y, TILE.road);
+      const inTown = ruin ? 0.3 : inPark ? 0.32 : byStreet ? 0.16 : 0.1;
+      const chance = (inCore ? inTown : wooded ? 0.55 : 0.04) * WOODS[context.terrain];
+      if (rng() < chance) {
         site.trees.push({ x: x + 0.2 + rng() * 0.6, y: y + 0.2 + rng() * 0.6, r: 0.45 + rng() * 0.4 });
+      } else if (inCore) {
+        // Lower growth where no tree stands: more of it in a garden, wilder in a ruin.
+        const roll = rng();
+        if (ruin) {
+          if (roll < 0.12) put('rubble', x, y);
+          else if (roll < 0.3) put('bush', x, y);
+        } else if (inPark) {
+          if (roll < 0.2 && !arid) put('flowers', x, y);
+          else if (roll < 0.38) put('bush', x, y);
+          else if (roll < 0.44) put('bench', x, y, rng() < 0.5 ? 0 : Math.PI / 2);
+        } else if (!arid) {
+          if (roll < 0.07) put('flowers', x, y);
+          else if (roll < 0.2) put('bush', x, y);
+          else if (roll < 0.22 && byStreet) put('crates', x, y, rng() * 3);
+        }
+      }
     }
   }
 
@@ -818,7 +1054,7 @@ function harbor(site: Site, ground: Ground, core: Rect, shore: (x: number) => nu
   for (let i = 0; i < 3; i++) {
     site.boats.push({ x: between(3, site.w - 4, rng), y: site.h - 2 - rng() * 2, vertical: false });
   }
-  const harborMaster: Rect = { x: right - 5, y: quayTop + 1, w: 4, h: 3 };
+  const harborMaster: Rect = { x: right - 5, y: quayTop + 1, w: 4, h: 2 };
   if (
     !site.buildings.some((b) => b.x < harborMaster.x + 5 && b.x + b.w > harborMaster.x - 1 && b.y >= quayTop)
   ) {
@@ -826,7 +1062,7 @@ function harbor(site: Site, ground: Ground, core: Rect, shore: (x: number) => nu
     site.places.push({ name: 'Capitania do Porto', ...middle(harborMaster) });
   }
   // The lighthouse stands apart, on the point west of the quay.
-  const light: Rect = { x: Math.max(1, core.x - 6), y: shore(core.x - 5) - 4, w: 3, h: 3 };
+  const light: Rect = { x: 0, y: shore(1) - 4, w: 3, h: 3 };
   site.buildings.push(building(light, 'lighthouse', rng));
   ground.claim({ x: light.x - 1, y: light.y - 1, w: 5, h: 5 });
   site.places.push({ name: 'Farol', ...middle(light) });
@@ -834,8 +1070,8 @@ function harbor(site: Site, ground: Ground, core: Rect, shore: (x: number) => nu
 
 /** A wizard's or a lord's tower: a walled yard in the woods, at the end of a track. */
 function tower(seed: string, rng: Rng, context: SiteContext): Site {
-  const w = 40;
-  const h = 32;
+  const w = 28;
+  const h = 24;
   const ground = new Ground(w, h, TILE.grass);
   const noise = createNoise2D(rng);
   const site: Site = {
@@ -853,10 +1089,11 @@ function tower(seed: string, rng: Rng, context: SiteContext): Site {
     terrain: context.terrain,
     trees: [],
     rocks: [],
+    props: [],
     boats: [],
     doors: [],
   };
-  const yard: Rect = { x: 13 + between(-2, 2, rng), y: 8 + between(-1, 1, rng), w: 14, h: 12 };
+  const yard: Rect = { x: 7 + between(-1, 1, rng), y: 6 + between(-1, 1, rng), w: 14, h: 12 };
   ground.fill(yard, TILE.yard);
   // A track leaves by the middle of every side a road arrives by, wandering a little.
   const midX = yard.x + Math.floor(yard.w / 2);
@@ -884,8 +1121,8 @@ function tower(seed: string, rng: Rng, context: SiteContext): Site {
   }
   if (rng() < 0.6) {
     // A pond in the woods.
-    const px = rng() < 0.5 ? between(3, 8, rng) : between(31, 35, rng);
-    const py = between(5, 24, rng);
+    const px = rng() < 0.5 ? 2 : w - 3;
+    const py = between(4, h - 5, rng);
     for (let dy = -3; dy <= 3; dy++) {
       for (let dx = -4; dx <= 4; dx++) {
         if ((dx * dx) / 12 + (dy * dy) / 6 + noise(dx * 0.4, dy * 0.4) * 0.4 < 1) {
@@ -910,6 +1147,14 @@ function tower(seed: string, rng: Rng, context: SiteContext): Site {
   const garden: Rect = { x: yard.x + yard.w - 5, y: yard.y + 6, w: 3, h: 3 };
   ground.fill(garden, TILE.field);
   site.places.push({ name: 'Horta', ...middle(garden) });
+  site.props.push(
+    { kind: 'cart', x: yard.x + 7.5, y: yard.y + yard.h - 2.5, angle: 0.5 },
+    { kind: 'crates', x: yard.x + 6.5, y: yard.y + yard.h - 3.4, angle: 1 },
+    { kind: 'haystack', x: yard.x + 2.5, y: yard.y + yard.h - 4.6, angle: 0 },
+    { kind: 'bench', x: yard.x + yard.w - 5.6, y: yard.y + 4.5, angle: Math.PI / 2 },
+    { kind: 'flowers', x: yard.x + yard.w - 3.5, y: yard.y + 9.6, angle: 0 },
+    { kind: 'bush', x: yard.x + 2.5, y: yard.y + 2.5, angle: 0 },
+  );
 
   for (let y = 0; y < h; y++) {
     for (let cellX = 0; cellX < w; cellX++) {
@@ -962,6 +1207,7 @@ function dungeon(seed: string, rng: Rng, context: SiteContext): Site {
     terrain: context.terrain,
     trees: [],
     rocks: [],
+    props: [],
     boats: [],
     doors: [],
   };

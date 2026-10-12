@@ -159,7 +159,7 @@ describe('the tower', () => {
       expect(site.buildings.filter((b) => b.kind === 'tower')).toHaveLength(1);
       expect(site.walls).toHaveLength(1);
       expect(site.walls[0].gates).toHaveLength(1);
-      expect(site.trees.length).toBeGreaterThan(200);
+      expect(site.trees.length).toBeGreaterThan(120);
       // The track leaves by the south edge.
       expect(Array.from({ length: site.w }, (_, x) => tile(site, x, site.h - 1))).toContain(TILE.road);
     }

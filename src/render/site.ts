@@ -1,4 +1,4 @@
-import { TILE, type Building, type BuildingKind, type Site, type Wall } from '../site/generate.ts';
+import { TILE, type Building, type BuildingKind, type Prop, type Site, type Wall } from '../site/generate.ts';
 import type { SiteTerrain } from '../site/context.ts';
 import type { StructureKind } from '../structures/model.ts';
 
@@ -464,7 +464,13 @@ function drawBuilding(ctx: CanvasRenderingContext2D, b: Building, px: number, sh
     ctx.lineTo(x + w, cy);
   }
   ctx.stroke();
-  if (b.kind === 'smithy' || b.kind === 'tavern' || b.kind === 'inn') {
+  // A chimney: always where there is a trade with a fire, and on about half the houses.
+  if (
+    b.kind === 'smithy' ||
+    b.kind === 'tavern' ||
+    b.kind === 'inn' ||
+    (b.kind === 'house' && (b.tone * 13) % 1 < 0.5)
+  ) {
     // A chimney.
     ctx.fillStyle = '#5a534c';
     ctx.fillRect(x + w * 0.7, y + h * 0.15, px * 0.32, px * 0.32);
@@ -565,6 +571,159 @@ function drawTrees(ctx: CanvasRenderingContext2D, site: Site, px: number): void 
     ctx.arc((tree.x - tree.r * 0.25) * px, (tree.y - tree.r * 0.25) * px, tree.r * px * 0.5, 0, Math.PI * 2);
     ctx.fill();
   }
+}
+
+/** The small things standing in the open, each drawn about its own middle. */
+function drawProp(ctx: CanvasRenderingContext2D, prop: Prop, px: number, site: Site): void {
+  const tone = hash(Math.floor(prop.x * 3), Math.floor(prop.y * 3), 11);
+  const land = LAND[site.terrain];
+  ctx.save();
+  ctx.translate(prop.x * px, prop.y * px);
+  ctx.rotate(prop.angle);
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = px * 0.06;
+  ctx.lineJoin = 'round';
+  const disc = (x: number, y: number, r: number, fill: string, stroke = true) => {
+    ctx.beginPath();
+    ctx.arc(x * px, y * px, r * px, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if (stroke) ctx.stroke();
+  };
+  const slab = (x: number, y: number, w: number, h: number, fill: string) => {
+    ctx.fillStyle = fill;
+    ctx.fillRect(x * px, y * px, w * px, h * px);
+    ctx.strokeRect(x * px, y * px, w * px, h * px);
+  };
+  const shadow = (r: number) => disc(0.12, 0.12, r, 'rgba(0, 0, 0, 0.25)', false);
+  switch (prop.kind) {
+    case 'fountain': {
+      shadow(1.3);
+      disc(0, 0, 1.3, '#a9a59d');
+      disc(0, 0, 1.05, '#6ea2c2');
+      // Ripples spreading from the jet in the middle.
+      ctx.strokeStyle = 'rgba(235, 248, 255, 0.6)';
+      ctx.lineWidth = px * 0.05;
+      for (const r of [0.45, 0.75]) {
+        ctx.beginPath();
+        ctx.arc(0, 0, r * px, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = px * 0.06;
+      disc(0, 0, 0.28, '#c2beb5');
+      disc(0, 0, 0.1, '#e8f4fb', false);
+      break;
+    }
+    case 'statue':
+      shadow(0.4);
+      slab(-0.34, -0.34, 0.68, 0.68, '#a9a59d');
+      disc(0, 0, 0.22, '#d2cdc0');
+      disc(0, -0.02, 0.09, '#e6e1d4', false);
+      break;
+    case 'bench':
+      slab(-0.42, -0.14, 0.84, 0.28, '#8f6236');
+      ctx.beginPath();
+      ctx.moveTo(-0.42 * px, 0);
+      ctx.lineTo(0.42 * px, 0);
+      ctx.lineWidth = px * 0.03;
+      ctx.stroke();
+      break;
+    case 'lamp': {
+      const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, px * 0.7);
+      glow.addColorStop(0, 'rgba(255, 226, 130, 0.55)');
+      glow.addColorStop(1, 'rgba(255, 210, 100, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(-px * 0.7, -px * 0.7, px * 1.4, px * 1.4);
+      disc(0, 0, 0.13, '#3a332d');
+      disc(0, 0, 0.06, '#ffe9a0', false);
+      break;
+    }
+    case 'planter':
+      shadow(0.4);
+      disc(0, 0, 0.4, '#9a958b');
+      disc(0, 0, 0.3, shade(land.tree, (tone - 0.5) * 0.3));
+      disc(-0.08, -0.08, 0.13, land.crown, false);
+      break;
+    case 'bigtree':
+      shadow(1.5);
+      disc(0, 0, 1.5, shade(land.tree, -0.08));
+      disc(-0.3, -0.35, 1, shade(land.tree, 0.08), false);
+      disc(-0.5, -0.55, 0.5, land.crown, false);
+      disc(0.5, 0.45, 0.35, 'rgba(20, 40, 20, 0.25)', false);
+      break;
+    case 'cart':
+      slab(-0.45, -0.26, 0.9, 0.52, '#96693a');
+      ctx.fillStyle = INK;
+      for (const [x, y] of [
+        [-0.32, -0.36],
+        [-0.32, 0.26],
+        [0.14, -0.36],
+        [0.14, 0.26],
+      ]) {
+        ctx.fillRect(x * px, y * px, 0.2 * px, 0.1 * px);
+      }
+      ctx.beginPath();
+      ctx.moveTo(0.45 * px, 0);
+      ctx.lineTo(0.8 * px, 0);
+      ctx.stroke();
+      break;
+    case 'crates':
+      slab(-0.36, -0.3, 0.38, 0.38, '#a57a48');
+      slab(0.02, -0.1, 0.34, 0.34, '#8f6236');
+      if (tone > 0.4) disc(-0.14, 0.24, 0.17, '#7a5a38');
+      break;
+    case 'haystack':
+      shadow(0.42);
+      disc(0, 0, 0.42, '#d6b85a');
+      ctx.strokeStyle = 'rgba(120, 90, 30, 0.6)';
+      ctx.lineWidth = px * 0.035;
+      for (let k = 0; k < 5; k++) {
+        const angle = (k * Math.PI * 2) / 5 + tone * 3;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(Math.cos(angle) * px * 0.36, Math.sin(angle) * px * 0.36);
+        ctx.stroke();
+      }
+      break;
+    case 'tombstone':
+      ctx.fillStyle = 'rgba(70, 60, 45, 0.35)';
+      ctx.fillRect(-0.16 * px, 0, 0.32 * px, 0.36 * px);
+      ctx.beginPath();
+      ctx.roundRect(-0.17 * px, -0.3 * px, 0.34 * px, 0.3 * px, [px * 0.14, px * 0.14, 0, 0]);
+      ctx.fillStyle = shade('#a9a59d', (tone - 0.5) * 0.3);
+      ctx.fill();
+      ctx.stroke();
+      break;
+    case 'bush':
+      disc(0.06, 0.06, 0.28, 'rgba(0, 0, 0, 0.2)', false);
+      disc(-0.1, 0.04, 0.2, shade(land.tree, 0.12));
+      disc(0.12, -0.04, 0.22, shade(land.tree, 0.2));
+      disc(0.08, -0.1, 0.08, land.crown, false);
+      break;
+    case 'flowers': {
+      const colors = ['#d8556a', '#e8c545', '#f2f0e6', '#9a6ad0', '#e88a3a'];
+      for (let k = 0; k < 6; k++) {
+        const x = (hash(prop.x, prop.y, k) - 0.5) * 0.7;
+        const y = (hash(prop.y, prop.x, k + 9) - 0.5) * 0.7;
+        disc(x, y, 0.09, colors[Math.floor(hash(prop.x + k, prop.y, 5) * colors.length)], false);
+        disc(x, y, 0.03, '#5a4a20', false);
+      }
+      break;
+    }
+    case 'rubble':
+      ctx.fillStyle = '#6e6a63';
+      for (let k = 0; k < 5; k++) {
+        ctx.fillRect(
+          (hash(prop.x, prop.y, k) - 0.5) * 0.8 * px,
+          (hash(prop.y, prop.x, k + 4) - 0.5) * 0.8 * px,
+          px * (0.12 + hash(prop.x, k, 2) * 0.12),
+          px * 0.13,
+        );
+      }
+      break;
+  }
+  ctx.restore();
 }
 
 function drawRocks(ctx: CanvasRenderingContext2D, site: Site, px: number): void {
@@ -868,6 +1027,7 @@ export function renderSite(canvas: HTMLCanvasElement, site: Site, view: SiteView
   drawBoats(ctx, site, px);
   for (const b of site.buildings) drawBuilding(ctx, b, px, false);
   for (const wall of site.walls) drawWall(ctx, wall, px);
+  for (const prop of site.props) drawProp(ctx, prop, px, site);
   drawRocks(ctx, site, px);
   drawTrees(ctx, site, px);
   drawDoors(ctx, site, px);

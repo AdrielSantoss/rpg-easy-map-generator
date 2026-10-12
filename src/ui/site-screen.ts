@@ -51,7 +51,7 @@ const TERRAIN_LABEL: Record<SiteTerrain, string> = {
  * squares large enough for tokens; the others show a whole town, in squares of
  * three metres.
  */
-const cellPx = (kind: StructureKind) => (kind === 'dungeon' ? 60 : 28);
+const cellPx = (kind: StructureKind) => (kind === 'dungeon' ? 60 : 32);
 
 /** Zoomed in past this, the map is drawn again with more pixels per square, to stay sharp. */
 const SHARPEN_ABOVE = 1.6;
