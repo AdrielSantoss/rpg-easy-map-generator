@@ -23,10 +23,10 @@ const ANIMATION_LABEL: Record<SpriteAnimation, string> = {
   bow: 'Arco',
 };
 const FACING_LABEL: Record<SpriteFacing, string> = {
-  down: '↓ Frente',
+  down: '↓ Para baixo',
   left: '← Esquerda',
   right: '→ Direita',
-  up: '↑ Costas',
+  up: '↑ Para cima',
 };
 
 /**
@@ -37,7 +37,7 @@ const OPTION_SCALE = 2;
 const PREVIEW_SCALE = 6;
 const SHEET_SCALE = 2;
 /** The part of the frame an option shows: the figure, without the room left around it for its weapons. */
-const CROP = { x: 8, y: 13, size: 48 };
+const CROP = { x: 8, y: 8, size: 48 };
 
 /** The ground the figure is shown on: the grass of the maps, with their grid, so it is seen as it will be used. */
 function ground(ctx: CanvasRenderingContext2D, size: number, square: number): void {

@@ -31,7 +31,7 @@ class and background, age the level, wealth the purse. The complete sheet follow
 edited in place and saves as a PDF; a short version is a card styled after the class and saves as a PNG.
 The latest NPCs stay in the browser between visits, and any of them can be saved to a file and opened again.
 
-Every NPC also has a **sprite**, drawn by rule in the ink of the maps: five looks to choose from, each
+Every NPC also has a **sprite**, pixel art seen from above like the maps and drawn by rule: five looks to choose from, each
 animated standing, running, cutting with a sword and shooting a bow in four directions, and saved as a
 sprite sheet.
 
