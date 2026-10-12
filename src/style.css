@@ -114,7 +114,41 @@ body:not([data-screen='npc']) #npc-screen {
   font-size: 1rem;
 }
 
+/* Token, short sheet or complete sheet: one at a time. */
+.npc-views {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.npc-views button {
+  width: auto;
+  padding: 3px 14px;
+  font-size: 0.85rem;
+  border-radius: 999px;
+}
+
+[data-pane][hidden] {
+  display: none !important;
+}
+
+/* The complete sheet needs the width of a page. */
+#npc-screen[data-view='sheet'] .npc-center {
+  flex-basis: 860px;
+}
+
+#npc-card {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - var(--header-height) - 130px);
+  margin: 0 auto;
+  border-radius: 14px;
+  box-shadow: 0 10px 34px rgb(0 0 0 / 55%);
+}
+
 #npc-history {
+  margin-top: 12px;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
@@ -186,7 +220,8 @@ h2 {
 }
 
 button,
-input {
+input,
+select {
   width: 100%;
   font: inherit;
   font-size: 0.9rem;
@@ -666,5 +701,395 @@ body[data-mode='map'] .sketch-only {
 
   .center {
     width: 100%;
+  }
+}
+
+/* The complete character sheet: ink on paper, laid out like the official one. */
+.sheet {
+  --ink: #2a2118;
+  --line: #6b5a45;
+  --caption: #5a4a38;
+
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  text-align: left;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--paper);
+  border-radius: 6px;
+  box-shadow: 0 8px 30px rgb(0 0 0 / 45%);
+  print-color-adjust: exact;
+}
+
+.sheet label {
+  color: inherit;
+  font-size: inherit;
+}
+
+.sheet input,
+.sheet textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 1px 3px;
+  font: inherit;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgb(107 90 69 / 45%);
+  border-radius: 0;
+}
+
+.sheet textarea {
+  display: block;
+  min-height: 3em;
+  overflow: hidden;
+  line-height: 1.35;
+  resize: none;
+  border-bottom: none;
+}
+
+.sheet input:focus,
+.sheet textarea:focus {
+  outline: none;
+  background: rgb(201 150 63 / 25%);
+}
+
+.sheet input[type='number'] {
+  appearance: textfield;
+  text-align: center;
+}
+
+.sheet input[type='number']::-webkit-inner-spin-button {
+  appearance: none;
+}
+
+.sheet input[type='checkbox'] {
+  width: 11px;
+  height: 11px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--ink);
+}
+
+/* What a box is for is written small beneath it. */
+.sheet-field > span:last-child,
+.sheet-box > span:last-child {
+  display: block;
+  margin-top: 3px;
+  font-size: 8.5px;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--caption);
+}
+
+.sheet-box {
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  background: rgb(255 255 255 / 30%);
+  border: 1.5px solid var(--line);
+  border-radius: 6px;
+}
+
+.sheet-head {
+  display: grid;
+  grid-template-columns: 64px 1fr 1.9fr;
+  align-items: end;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.sheet-portrait {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+}
+
+.sheet-name input {
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.sheet-id {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px 10px;
+  padding: 6px 8px;
+  border: 1.5px solid var(--line);
+  border-radius: 6px;
+}
+
+.sheet-pair {
+  display: grid;
+  grid-template-columns: 1fr 34px;
+  gap: 4px;
+}
+
+.sheet-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1.08fr 1fr 1fr;
+  gap: 10px;
+}
+
+.sheet-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Takes the room left in its column, and more when its text asks for it. */
+.sheet-grow,
+.sheet-grow textarea {
+  flex: 1 0 auto;
+}
+
+.sheet-stats {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 8px;
+}
+
+.sheet-abilities {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* The modifier large, the score in the pill hanging from the box. */
+.sheet-ability {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 2px 0;
+  background: rgb(255 255 255 / 30%);
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+}
+
+.sheet-ability span {
+  font-size: 7.5px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.sheet-ability output {
+  font-size: 22px;
+  font-weight: bold;
+  line-height: 1.2;
+}
+
+.sheet .sheet-ability input {
+  width: 38px;
+  margin-bottom: -8px;
+  font-size: 11px;
+  background: var(--paper);
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+}
+
+.sheet-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sheet-inline {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border: 1.5px solid var(--line);
+  border-radius: 6px;
+}
+
+.sheet-inline input,
+.sheet-inline output {
+  font-size: 14px;
+  font-weight: bold;
+  text-align: center;
+}
+
+.sheet-inline > span:last-child {
+  margin: 0;
+  text-align: left;
+}
+
+.sheet-checks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sheet-checks label {
+  display: grid;
+  grid-template-columns: 11px 24px auto 1fr;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  line-height: 1.55;
+}
+
+.sheet-checks output {
+  text-align: center;
+  border-bottom: 1px solid rgb(107 90 69 / 45%);
+}
+
+.sheet-checks small {
+  color: var(--caption);
+}
+
+.sheet-combat,
+.sheet-person {
+  gap: 6px;
+  background: rgb(0 0 0 / 7%);
+}
+
+.sheet-person .sheet-box,
+.sheet-combat .sheet-box,
+.sheet-big {
+  background: var(--paper);
+}
+
+.sheet-trio,
+.sheet-duo {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.sheet-duo {
+  grid-template-columns: 1fr 1fr;
+}
+
+.sheet-big {
+  padding: 4px;
+  border: 1.5px solid var(--line);
+  border-radius: 6px;
+}
+
+.sheet .sheet-big input {
+  font-size: 18px;
+  font-weight: bold;
+  text-align: center;
+  border-bottom: none;
+}
+
+.sheet-hp .sheet-big {
+  padding: 0;
+  border: none;
+}
+
+.sheet .sheet-hp-max {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  color: var(--caption);
+}
+
+.sheet .sheet-hp-max input {
+  width: 46px;
+}
+
+.sheet-deaths p {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  margin: 0 0 3px;
+  font-size: 9px;
+}
+
+.sheet-attack-row {
+  display: grid;
+  grid-template-columns: 1.3fr 0.6fr 1.3fr;
+  gap: 4px;
+  margin-bottom: 3px;
+}
+
+.sheet .sheet-attack-row input {
+  padding: 3px 4px;
+  font-size: 11px;
+  background: rgb(0 0 0 / 8%);
+  border: none;
+  border-radius: 3px;
+}
+
+.sheet-attack-head {
+  font-size: 8px;
+  text-transform: uppercase;
+  color: var(--caption);
+}
+
+.sheet-spell {
+  display: block;
+  margin: 4px 0 2px;
+  font-size: 10.5px;
+  font-weight: bold;
+}
+
+.sheet-spell:empty {
+  display: none;
+}
+
+.sheet-coins {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.sheet .sheet-coins label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 8px;
+  color: var(--caption);
+}
+
+.sheet .sheet-coins input {
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+}
+
+/* Printing gives the complete sheet alone, on one A4 page: that is how it is saved as a PDF. */
+@media print {
+  @page {
+    size: A4;
+    margin: 8mm;
+  }
+
+  body {
+    min-height: 0;
+    background: #fff;
+  }
+
+  header,
+  .panel,
+  .npc-views,
+  .status,
+  #npc-history {
+    display: none;
+  }
+
+  .layout {
+    display: block;
+    padding: 0;
+  }
+
+  .sheet {
+    width: 840px;
+    /* As tall as the page, so the boxes at the foot of each column fill it. */
+    min-height: 1220px;
+    zoom: 0.86;
+    box-shadow: none;
   }
 }

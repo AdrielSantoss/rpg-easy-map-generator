@@ -220,6 +220,30 @@
           <h2>Idade</h2>
           <div class="tool-grid" id="npc-ages"></div>
         </section>
+        <section>
+          <h2 title="A ficha de D&D do NPC, escrita junto com o retrato">Ficha</h2>
+          <label for="npc-class">Classe</label>
+          <select id="npc-class" title="Pelo ofício: a classe que combina com o que o NPC faz"></select>
+          <label for="npc-level">Nível</label>
+          <select id="npc-level" title="Pela idade: os mais velhos têm mais níveis"></select>
+          <button
+            id="npc-reroll"
+            title="Sorteia outra ficha para o mesmo retrato. O que foi editado se perde."
+            disabled
+          >
+            Rolar de novo
+          </button>
+          <button id="npc-save-card" title="Baixa a ficha resumida como imagem" disabled>
+            Baixar resumida
+          </button>
+          <button
+            id="npc-save-sheet"
+            title="Abre a impressão do navegador: escolha “Salvar como PDF”"
+            disabled
+          >
+            Baixar completa
+          </button>
+        </section>
       </aside>
 
       <div class="npc-center">
@@ -234,8 +258,21 @@
           <button class="primary">Entrar</button>
         </form>
         <div class="npc-open">
-          <canvas id="npc-token" width="512" height="512"></canvas>
-          <p id="npc-summary"></p>
+          <nav class="npc-views">
+            <button data-view="token" title="O retrato como token redondo">Token</button>
+            <button data-view="card" title="O essencial da ficha, num cartão com a cara da classe" disabled>
+              Ficha resumida
+            </button>
+            <button data-view="sheet" title="A ficha de D&D inteira, que pode ser editada" disabled>
+              Ficha completa
+            </button>
+          </nav>
+          <div data-pane="token">
+            <canvas id="npc-token" width="512" height="512"></canvas>
+            <p id="npc-summary"></p>
+          </div>
+          <canvas id="npc-card" data-pane="card" width="900" height="1260"></canvas>
+          <div id="npc-sheet" class="sheet" data-pane="sheet"></div>
           <div id="npc-history"></div>
         </div>
         <p id="npc-status" class="status" role="status" aria-live="polite"></p>
@@ -252,7 +289,7 @@
             Gerar token
           </button>
           <button id="npc-save" title="Salva o token redondo, com fundo transparente" disabled>
-            Salvar PNG
+            Salvar token
           </button>
           <p class="hint">Cada token gasta um pouco da cota diária gratuita da IA.</p>
         </section>

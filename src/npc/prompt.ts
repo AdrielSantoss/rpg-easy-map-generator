@@ -43,14 +43,26 @@ export interface NpcDescription {
   /** The text given to the image model. Built only from the lists in this file, never from user text. */
   prompt: string;
   summary: string;
+  /** What was decided about this NPC, for whatever else is generated to match the picture. */
+  traits: NpcTraits;
+}
+
+export interface NpcTraits {
+  age: NpcAge;
+  expression: NpcExpression;
+  wealth: NpcWealth;
+  /** One of NPC_TRADES, or null for a child, who has none yet. */
+  trade: string | null;
 }
 
 /** A trait: how to say it to the image model, and in Portuguese for a man and for a woman. */
 type Trait = readonly [english: string, masculine: string, feminine: string];
+/** A trade: a name for the code, then how to say it, as in a trait. */
+type Role = readonly [id: string, english: string, masculine: string, feminine: string];
 
 const pick = <T>(list: readonly T[], rng: Rng): T => list[Math.floor(rng() * list.length)];
 
-const RACE_NAME: Record<NpcRace, readonly [masculine: string, feminine: string]> = {
+export const RACE_NAME: Record<NpcRace, readonly [masculine: string, feminine: string]> = {
   human: ['Humano', 'Humana'],
   elf: ['Elfo', 'Elfa'],
   'half-elf': ['Meio-elfo', 'Meio-elfa'],
@@ -162,39 +174,49 @@ const WEALTH: Record<NpcWealth, { clothes: string; child: string; childLook: str
 };
 
 /** The trades of each station in life. */
-const ROLES: Record<NpcWealth, readonly Trait[]> = {
+const ROLES: Record<NpcWealth, readonly Role[]> = {
   peasant: [
-    ['a farmer', 'fazendeiro', 'fazendeira'],
-    ['a beggar', 'mendigo', 'mendiga'],
-    ['a hunter in a patched fur cloak', 'caçador', 'caçadora'],
-    ['a fisher in a weathered coat', 'pescador', 'pescadora'],
-    ['a woodcutter', 'lenhador', 'lenhadora'],
-    ['a shepherd with a crook', 'pastor', 'pastora'],
-    ['a stable hand', 'cavalariço', 'cavalariça'],
-    ['a street thief in a ragged hood', 'gatuno', 'gatuna'],
+    ['farmer', 'a farmer', 'fazendeiro', 'fazendeira'],
+    ['beggar', 'a beggar', 'mendigo', 'mendiga'],
+    ['hunter', 'a hunter in a patched fur cloak', 'caçador', 'caçadora'],
+    ['fisher', 'a fisher in a weathered coat', 'pescador', 'pescadora'],
+    ['woodcutter', 'a woodcutter', 'lenhador', 'lenhadora'],
+    ['shepherd', 'a shepherd with a crook', 'pastor', 'pastora'],
+    ['stablehand', 'a stable hand', 'cavalariço', 'cavalariça'],
+    ['thief', 'a street thief in a ragged hood', 'gatuno', 'gatuna'],
   ],
   burgher: [
-    ['an innkeeper wearing an apron', 'taverneiro', 'taverneira'],
-    ['a city guard in a steel helmet and mail', 'guarda', 'guarda'],
-    ['a travelling merchant', 'mercador', 'mercadora'],
-    ['a blacksmith in a leather apron', 'ferreiro', 'ferreira'],
-    ['a priest in simple robes with a holy symbol', 'sacerdote', 'sacerdotisa'],
-    ['a scholar with small spectacles', 'estudioso', 'estudiosa'],
-    ['a healer carrying a pouch of herbs', 'curandeiro', 'curandeira'],
-    ['a bard in a feathered cap', 'bardo', 'barda'],
-    ['a mercenary in leather armor', 'mercenário', 'mercenária'],
-    ['a wizard in a robe with arcane embroidery', 'mago', 'maga'],
-    ['a sailor', 'marinheiro', 'marinheira'],
+    ['innkeeper', 'an innkeeper wearing an apron', 'taverneiro', 'taverneira'],
+    ['guard', 'a city guard in a steel helmet and mail', 'guarda', 'guarda'],
+    ['merchant', 'a travelling merchant', 'mercador', 'mercadora'],
+    ['blacksmith', 'a blacksmith in a leather apron', 'ferreiro', 'ferreira'],
+    ['priest', 'a priest in simple robes with a holy symbol', 'sacerdote', 'sacerdotisa'],
+    ['scholar', 'a scholar with small spectacles', 'estudioso', 'estudiosa'],
+    ['healer', 'a healer carrying a pouch of herbs', 'curandeiro', 'curandeira'],
+    ['bard', 'a bard in a feathered cap', 'bardo', 'barda'],
+    ['mercenary', 'a mercenary in leather armor', 'mercenário', 'mercenária'],
+    ['wizard', 'a wizard in a robe with arcane embroidery', 'mago', 'maga'],
+    ['sailor', 'a sailor', 'marinheiro', 'marinheira'],
   ],
   noble: [
-    ['a noble', 'nobre', 'nobre'],
-    ['a court advisor in a fur-trimmed robe', 'conselheiro', 'conselheira'],
-    ['a knight in polished, engraved plate armor', 'cavaleiro', 'cavaleira'],
-    ['a high priest in gilded vestments', 'sumo sacerdote', 'suma sacerdotisa'],
-    ['a court wizard in a jeweled robe', 'mago da corte', 'maga da corte'],
-    ['a wealthy guildmaster wearing a gold chain of office', 'mestre de guilda', 'mestra de guilda'],
+    ['noble', 'a noble', 'nobre', 'nobre'],
+    ['advisor', 'a court advisor in a fur-trimmed robe', 'conselheiro', 'conselheira'],
+    ['knight', 'a knight in polished, engraved plate armor', 'cavaleiro', 'cavaleira'],
+    ['highpriest', 'a high priest in gilded vestments', 'sumo sacerdote', 'suma sacerdotisa'],
+    ['courtwizard', 'a court wizard in a jeweled robe', 'mago da corte', 'maga da corte'],
+    [
+      'guildmaster',
+      'a wealthy guildmaster wearing a gold chain of office',
+      'mestre de guilda',
+      'mestra de guilda',
+    ],
   ],
 };
+
+/** Every trade an adult NPC can have. */
+export const NPC_TRADES: readonly string[] = Object.values(ROLES).flatMap((roles) =>
+  roles.map((role) => role[0]),
+);
 
 const MARKS: readonly Trait[] = [
   ['a scar across the cheek', 'com uma cicatriz no rosto', 'com uma cicatriz no rosto'],
@@ -227,7 +249,8 @@ export function describeNpc(
   const randomExpression = pick(NPC_EXPRESSIONS, rng);
   const randomWealth = pick(['peasant', 'burgher', 'burgher', 'noble'] as const, rng);
   const age = options.age ?? randomAge;
-  const expression = EXPRESSION[options.expression ?? randomExpression];
+  const expressionId = options.expression ?? randomExpression;
+  const expression = EXPRESSION[expressionId];
   const wealth = options.wealth ?? randomWealth;
 
   const look = raceLook(race, gender, age, rng);
@@ -246,7 +269,7 @@ export function describeNpc(
   const who =
     age === 'child'
       ? `${WEALTH[wealth].childLook}: a ten-year-old ${gender} ${look}, a child with a small young face`
-      : `${role[0]}: a ${stage[0]} ${gender} ${look}`;
+      : `${role[1]}: a ${stage[0]} ${gender} ${look}`;
   const prompt =
     `Portrait of ${who}${withDetails}, ${expression[0]} expression, ${WEALTH[wealth].clothes}. ` +
     'Head and shoulders, facing the viewer, centered in the frame. ' +
@@ -257,6 +280,10 @@ export function describeNpc(
   const parts =
     age === 'child'
       ? [`${name}, ${WEALTH[wealth].child}`, expression[form], mark?.[form]]
-      : [`${name}, ${role[form]}`, stage[form], expression[form], mark?.[form]];
-  return { prompt, summary: parts.filter(Boolean).join(', ') };
+      : [`${name}, ${role[form + 1]}`, stage[form], expression[form], mark?.[form]];
+  return {
+    prompt,
+    summary: parts.filter(Boolean).join(', '),
+    traits: { age, expression: expressionId, wealth, trade: age === 'child' ? null : role[0] },
+  };
 }

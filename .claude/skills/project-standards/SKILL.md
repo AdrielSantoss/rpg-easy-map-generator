@@ -26,7 +26,8 @@ src/
   regions/     Pure naming of map features: seas, landmasses, forests, mountain ranges.
   project/     Pure save format: turning the user's work into text and back, validated.
   tavern/      Pure tavern interiors on a 5-foot battle grid: rooms, doors, furniture.
-  npc/         Pure NPC descriptions (the prompt for the image model) and the password check.
+  npc/         Pure NPC descriptions (the prompt for the image model), the D&D character sheet
+               (rules data in sheet-data.ts, generator in sheet.ts) and the password check.
   view/        Pure zoom and pan math for the map frame.
   render/      Canvas 2D painting: the world map and what goes on it, and the tavern battle map.
   ui/          DOM widgets: sketch board, sliders, zoom, structure and region menus.

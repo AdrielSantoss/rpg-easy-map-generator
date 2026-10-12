@@ -16,6 +16,10 @@ A third tab makes **NPC tokens**: pick a race and a gender and get a painted por
 token with a transparent background. The portraits are painted by an image model on Cloudflare Workers AI,
 which has a limited free daily allowance, so this tab is locked behind a password.
 
+Each token comes with a **D&D 5e character sheet** written by rule, no AI involved: the NPC's trade decides
+class and background, age the level, wealth the purse. The complete sheet follows the official layout, can be
+edited in place and saves as a PDF; a short version is a card styled after the class and saves as a PNG.
+
 ## How the world map works
 
 1. **Sketch**: draw the coastlines on the board. Small gaps are closed for you, and an outline drawn inside
@@ -71,7 +75,7 @@ src/
   structures/  Model, name suggestions and roads for user-placed structures
   regions/     Names for seas, landmasses, forests, mountain ranges
   tavern/      Tavern interior generation on a battle grid
-  npc/         What an NPC portrait should show, and the password check
+  npc/         What an NPC portrait should show, its character sheet, and the password check
   project/     Save format and undo history
   render/      Canvas painting of the map and structure icons
   ui/          Sketch board, menus, sliders and the tavern screen
