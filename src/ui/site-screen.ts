@@ -1,6 +1,7 @@
+import { buildingAt, interiorOf, type InteriorRequest } from '../interior/from-site.ts';
 import { renderSite, SITE_LABEL } from '../render/site.ts';
 import { SITE_SIDES, SITE_TERRAINS, type SiteSide, type SiteTerrain } from '../site/context.ts';
-import { generateSite } from '../site/generate.ts';
+import { generateSite, type Site } from '../site/generate.ts';
 import { STRUCTURE_KINDS, type StructureKind } from '../structures/model.ts';
 import { ZoomController } from './zoom.ts';
 
@@ -106,9 +107,10 @@ function loadSettings(): Settings {
  * terrain or a seed makes the map at once, and every change redraws it. A
  * structure of the world map can be opened here, and then its terrain, its
  * roads and its name come with it. The mouse wheel zooms in and dragging pans;
- * zoomed in, the map is redrawn finer so that it stays sharp.
+ * zoomed in, the map is redrawn finer so that it stays sharp. Clicking a
+ * building goes to its interior.
  */
-export function initSiteScreen(root: HTMLElement): SiteScreen {
+export function initSiteScreen(root: HTMLElement, onEnter: (request: InteriorRequest) => void): SiteScreen {
   const find = <T extends HTMLElement>(selector: string) => root.querySelector(selector) as T;
   const canvas = find<HTMLCanvasElement>('#site-canvas');
   const seedInput = find<HTMLInputElement>('#site-seed');
@@ -123,6 +125,8 @@ export function initSiteScreen(root: HTMLElement): SiteScreen {
   /** 1 for the whole map, SHARP while zoomed in: multiplies the pixels per square. */
   let detail = 1;
   let sharpening = 0;
+  /** The map on screen. */
+  let shown: Site | null = null;
 
   const terrainButtons = SITE_TERRAINS.map((terrain) => {
     const button = document.createElement('button');
@@ -143,6 +147,7 @@ export function initSiteScreen(root: HTMLElement): SiteScreen {
       exits: settings.exits,
       name: settings.name,
     });
+    shown = site;
     renderSite(canvas, site, { ...settings, cellPx: cellPx(settings.kind) * detail });
     for (const button of kindButtons) {
       button.classList.toggle('active', button.dataset.siteKind === settings.kind);
@@ -182,6 +187,26 @@ export function initSiteScreen(root: HTMLElement): SiteScreen {
     },
   });
   zoomReset.addEventListener('click', () => zoom.reset());
+
+  /** The interior of the building under the pointer, whatever the zoom; null where there is none. */
+  const insideAt = (e: MouseEvent): InteriorRequest | null => {
+    if (!shown || e.target === zoomReset) return null;
+    const rect = canvas.getBoundingClientRect();
+    const px = cellPx(settings.kind) * detail;
+    const x = Math.floor((((e.clientX - rect.left) / rect.width) * canvas.width) / px);
+    const y = Math.floor((((e.clientY - rect.top) / rect.height) * canvas.height) / px);
+    const building = buildingAt(shown, x, y);
+    return building && interiorOf(shown, building);
+  };
+  // A press that moves is a pan; one that stays put on a building goes inside it.
+  let pressed = { x: 0, y: 0 };
+  stage.addEventListener('pointerdown', (e) => (pressed = { x: e.clientX, y: e.clientY }), { capture: true });
+  stage.addEventListener('pointermove', (e) => stage.classList.toggle('enterable', insideAt(e) !== null));
+  stage.addEventListener('click', (e) => {
+    if (Math.hypot(e.clientX - pressed.x, e.clientY - pressed.y) > 5) return;
+    const request = insideAt(e);
+    if (request) onEnter(request);
+  });
   /** Another map has other proportions, so the view goes back to the whole of it. */
   const fresh = () => {
     detail = 1;

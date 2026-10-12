@@ -976,8 +976,11 @@ function showScreen(screen: string): void {
   }
 }
 for (const tab of screenTabs) tab.addEventListener('click', () => showScreen(tab.dataset.screen ?? 'world'));
-initTavernScreen($('tavern-screen'));
-const siteScreen = initSiteScreen($('site-screen'));
+const interiorScreen = initTavernScreen($('tavern-screen'));
+const siteScreen = initSiteScreen($('site-screen'), (request) => {
+  interiorScreen.open(request);
+  showScreen('tavern');
+});
 initNpcScreen($('npc-screen'));
 try {
   const last = params.get('screen') ?? localStorage.getItem(SCREEN_KEY);

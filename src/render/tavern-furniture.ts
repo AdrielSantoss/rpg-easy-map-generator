@@ -115,6 +115,14 @@ const SILHOUETTE: Partial<Record<Furniture['kind'], (ctx: Ctx, p: Furniture) => 
   nightstand: (ctx, p) => box(ctx, ...inset(p, 0.2), 0.04),
   desk: (ctx, p) => box(ctx, p.x + 0.08, p.y + 0.16, p.w - 0.16, p.h - 0.3),
   plant: (ctx, p) => circle(ctx, ...centerOf(p), 0.3),
+  anvil: (ctx, p) => circle(ctx, ...centerOf(p), 0.32),
+  forge: (ctx, p) => box(ctx, ...inset(p, 0.06), 0.08),
+  workbench: (ctx, p) => box(ctx, p.x + 0.06, p.y + 0.14, p.w - 0.12, p.h - 0.28),
+  throne: (ctx, p) => box(ctx, ...inset(p, 0.1), 0.1),
+  altar: (ctx, p) => box(ctx, p.x + 0.08, p.y + 0.14, p.w - 0.16, p.h - 0.28, 0.04),
+  statue: (ctx, p) => box(ctx, ...inset(p, 0.14), 0.04),
+  pillar: (ctx, p) => circle(ctx, ...centerOf(p), 0.36),
+  'weapon-rack': (ctx, p) => box(ctx, p.x, p.y, p.w, p.h, 0.02),
 };
 
 /** Fills and outlines the current path. */
@@ -486,10 +494,168 @@ const PAINTERS: Record<Furniture['kind'], Painter> = {
     dot(ctx, cx, cy, 0.035, '#fff3c4');
   },
 
+  anvil(ctx, p) {
+    const [cx, cy] = centerOf(p);
+    // A block of wood, and the anvil on it with its horn to the right.
+    ctx.beginPath();
+    circle(ctx, cx, cy, 0.32);
+    finish(ctx, lit(ctx, p.x, p.y, p.w, p.h, WOOD_LIGHT, WOOD_DARK));
+    ctx.beginPath();
+    ctx.moveTo(cx - 0.3, cy - 0.12);
+    ctx.lineTo(cx + 0.14, cy - 0.14);
+    ctx.lineTo(cx + 0.38, cy);
+    ctx.lineTo(cx + 0.14, cy + 0.14);
+    ctx.lineTo(cx - 0.3, cy + 0.12);
+    ctx.closePath();
+    finish(ctx, lit(ctx, cx - 0.3, cy - 0.15, 0.7, 0.3, '#9a9792', IRON), 0.035);
+  },
+
+  forge(ctx, p) {
+    // A brick hearth with a bed of burning coal.
+    ctx.beginPath();
+    box(ctx, ...inset(p, 0.06), 0.08);
+    finish(ctx, lit(ctx, p.x, p.y, p.w, p.h, '#93604c', '#5a352a'), 0.05);
+    ctx.strokeStyle = 'rgba(40, 20, 14, 0.45)';
+    ctx.lineWidth = 0.02;
+    ctx.beginPath();
+    for (let k = 1; k < p.h * 3; k++) {
+      ctx.moveTo(p.x + 0.1, p.y + k / 3);
+      ctx.lineTo(p.x + p.w - 0.1, p.y + k / 3);
+    }
+    ctx.stroke();
+    const [cx, cy] = centerOf(p);
+    const radius = Math.min(p.w, p.h) * 0.3;
+    ctx.beginPath();
+    circle(ctx, cx, cy, radius);
+    finish(ctx, '#1f1a17', 0.04);
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    glow.addColorStop(0, '#ffe08a');
+    glow.addColorStop(0.5, '#f0782a');
+    glow.addColorStop(1, 'rgba(120, 30, 10, 0.25)');
+    ctx.beginPath();
+    circle(ctx, cx, cy, radius * 0.86);
+    ctx.fillStyle = glow;
+    ctx.fill();
+  },
+
+  workbench(ctx, p, rng) {
+    ctx.beginPath();
+    box(ctx, p.x + 0.06, p.y + 0.14, p.w - 0.12, p.h - 0.28);
+    finish(ctx, lit(ctx, p.x, p.y, p.w, p.h, WOOD_LIGHT, WOOD));
+    boards(ctx, p.x + 0.06, p.y + 0.14, p.w - 0.12, p.h - 0.28, 2);
+    // Tools left where they were last used.
+    for (let k = 0; k < Math.floor(p.w * 1.5); k++) {
+      ctx.save();
+      ctx.translate(p.x + 0.3 + rng() * (p.w - 0.6), p.y + 0.34 + rng() * (p.h - 0.68));
+      ctx.rotate(rng() * Math.PI);
+      ctx.fillStyle = WOOD_DARK;
+      ctx.fillRect(-0.15, -0.02, 0.24, 0.04);
+      ctx.fillStyle = rng() < 0.5 ? IRON : '#a9a6a0';
+      ctx.fillRect(0.06, -0.055, 0.1, 0.11);
+      ctx.restore();
+    }
+  },
+
+  'weapon-rack'(ctx, p, rng) {
+    ctx.fillStyle = lit(ctx, p.x, p.y, p.w, p.h, '#6e4826', WOOD_DARK);
+    ctx.fillRect(p.x, p.y, p.w, p.h);
+    // Blades and hafts side by side, across the board.
+    const along = p.w >= p.h;
+    const count = Math.round((along ? p.w : p.h) * 4);
+    for (let k = 0; k < count; k++) {
+      const at = (k + 0.5) / count;
+      const steel = rng() < 0.6;
+      ctx.strokeStyle = steel ? '#c2bfb7' : WOOD_LIGHT;
+      ctx.lineWidth = steel ? 0.04 : 0.03;
+      ctx.beginPath();
+      if (along) {
+        ctx.moveTo(p.x + p.w * at, p.y + p.h * 0.08);
+        ctx.lineTo(p.x + p.w * at, p.y + p.h * 0.92);
+      } else {
+        ctx.moveTo(p.x + p.w * 0.08, p.y + p.h * at);
+        ctx.lineTo(p.x + p.w * 0.92, p.y + p.h * at);
+      }
+      ctx.stroke();
+      if (along) dot(ctx, p.x + p.w * at, p.y + p.h * 0.2, 0.03, steel ? BRASS : IRON);
+      else dot(ctx, p.x + p.w * 0.2, p.y + p.h * at, 0.03, steel ? BRASS : IRON);
+    }
+  },
+
+  throne(ctx, p) {
+    ctx.beginPath();
+    box(ctx, ...inset(p, 0.1), 0.1);
+    finish(ctx, lit(ctx, p.x, p.y, p.w, p.h, BRASS, '#8a6a2a'));
+    ctx.beginPath();
+    box(ctx, ...inset(p, 0.25), 0.08);
+    finish(ctx, '#8c2f2f', 0.03);
+    // The high back, on the side away from where it faces.
+    const back: Record<string, [number, number, number, number]> = {
+      s: [p.x + 0.1, p.y + 0.05, p.w - 0.2, 0.2],
+      n: [p.x + 0.1, p.y + p.h - 0.25, p.w - 0.2, 0.2],
+      e: [p.x + 0.05, p.y + 0.1, 0.2, p.h - 0.2],
+      w: [p.x + p.w - 0.25, p.y + 0.1, 0.2, p.h - 0.2],
+    };
+    ctx.beginPath();
+    box(ctx, ...back[p.facing ?? 's'], 0.06);
+    finish(ctx, lit(ctx, p.x, p.y, p.w, p.h, '#e6c878', BRASS), 0.03);
+  },
+
+  altar(ctx, p) {
+    const top: [number, number, number, number] = [p.x + 0.08, p.y + 0.14, p.w - 0.16, p.h - 0.28];
+    ctx.beginPath();
+    box(ctx, ...top, 0.04);
+    finish(ctx, lit(ctx, p.x, p.y, p.w, p.h, '#d9d4c7', '#9c978a'));
+    // A cloth down the middle, with a gold edge either side.
+    ctx.fillStyle = '#8c2f2f';
+    ctx.fillRect(p.x + p.w / 2 - 0.32, top[1], 0.64, top[3]);
+    ctx.fillStyle = BRASS;
+    ctx.fillRect(p.x + p.w / 2 - 0.32, top[1], 0.05, top[3]);
+    ctx.fillRect(p.x + p.w / 2 + 0.27, top[1], 0.05, top[3]);
+    const [cx, cy] = centerOf(p);
+    dot(ctx, cx, cy, 0.1, BRASS);
+    candle(ctx, p.x + 0.3, cy);
+    candle(ctx, p.x + p.w - 0.3, cy);
+  },
+
+  statue(ctx, p) {
+    ctx.beginPath();
+    box(ctx, ...inset(p, 0.14), 0.04);
+    finish(ctx, lit(ctx, p.x, p.y, p.w, p.h, '#c9c4b6', '#8f8a7d'));
+    const [cx, cy] = centerOf(p);
+    ctx.beginPath();
+    circle(ctx, cx, cy, 0.23);
+    finish(ctx, lit(ctx, cx - 0.2, cy - 0.2, 0.4, 0.4, '#e6e1d4', '#a09b8e'), 0.035);
+    ctx.beginPath();
+    circle(ctx, cx, cy - 0.02, 0.1);
+    finish(ctx, '#d2cdc0', 0.025);
+  },
+
+  pillar(ctx, p) {
+    const [cx, cy] = centerOf(p);
+    ctx.beginPath();
+    circle(ctx, cx, cy, 0.36);
+    finish(ctx, lit(ctx, p.x, p.y, p.w, p.h, '#d2cdc0', '#8f8a7d'));
+    ctx.beginPath();
+    circle(ctx, cx, cy, 0.25);
+    ctx.strokeStyle = 'rgba(60, 54, 46, 0.5)';
+    ctx.lineWidth = 0.03;
+    ctx.stroke();
+  },
+
   shelf(ctx, p, rng) {
     ctx.fillStyle = lit(ctx, p.x, p.y, p.w, p.h, '#6e4826', WOOD_DARK);
     ctx.fillRect(p.x, p.y, p.w, p.h);
     switch (p.variant) {
+      case 'books': {
+        // Spines of every color, shoulder to shoulder.
+        const count = Math.round(p.w * 9);
+        const spines = ['#7a2e2a', '#2f4f7a', '#3f6a46', '#8a6a2a', '#5a3a6a', '#3a3530', '#9a8a6a'];
+        for (let k = 0; k < count; k++) {
+          ctx.fillStyle = spines[Math.floor(rng() * spines.length)];
+          ctx.fillRect(p.x + (p.w * k) / count + 0.008, p.y + p.h * 0.12, p.w / count - 0.016, p.h * 0.76);
+        }
+        break;
+      }
       case 'empty':
         break;
       case 'broken':

@@ -30,7 +30,16 @@ const ROOM_LABEL: Record<RoomKind, string> = {
   kitchen: 'Cozinha',
   storage: 'Despensa',
   guest: 'Quarto',
+  living: 'Sala',
+  forge: 'Oficina',
+  hall: 'Grande salão',
+  armory: 'Arsenal',
+  study: 'Gabinete',
+  sanctuary: 'Nave',
 };
+
+/** Rooms paved with flagstones rather than floored with boards. */
+const STONE_FLOOR: readonly RoomKind[] = ['kitchen', 'forge', 'hall', 'armory', 'sanctuary'];
 
 /**
  * How dark an unlit corner gets with lighting on (0 = no dimming, 1 = black).
@@ -147,7 +156,7 @@ function paintFloor(ctx: Ctx, room: Room, quality: TavernQuality, rng: Rng): voi
   ctx.rect(room.x, room.y, room.w, room.h);
   ctx.clip();
 
-  if (room.kind === 'kitchen') {
+  if (STONE_FLOOR.includes(room.kind)) {
     // Flagstones of uneven widths, in staggered courses.
     ctx.fillStyle = '#5c574d';
     ctx.fillRect(room.x, room.y, room.w, room.h);
@@ -277,6 +286,12 @@ function lightSources(tavern: Tavern): Light[] {
       for (let at = piece.x + 2; at < piece.x + piece.w - 0.5; at += dim ? 99 : 3) {
         lights.push({ x: at + 0.5, y, radius: 3.2, strength: dim ? 0.6 : 0.9, warm: true });
       }
+    } else if (piece.kind === 'forge') {
+      lights.push({ x, y, radius: 6.5, strength: 1, warm: true });
+    } else if (piece.kind === 'altar') {
+      lights.push({ x, y, radius: 3.4, strength: 0.9, warm: true });
+    } else if (piece.kind === 'desk' || piece.kind === 'workbench') {
+      lights.push({ x, y, radius: 2.4, strength: 0.7, warm: true });
     } else if (piece.kind === 'stove') {
       lights.push({ x, y, radius: 3.4, strength: 0.85, warm: true });
     } else if (piece.kind === 'counter') {
@@ -567,9 +582,9 @@ function labelSpot(tavern: Tavern, room: Room): [number, number] {
 function paintLabels(ctx: Ctx, tavern: Tavern): void {
   const font = "italic bold 0.36px Georgia, 'Times New Roman', serif";
   for (const room of tavern.rooms) {
-    if (room.kind === 'common') {
-      // Beside the front door, in the aisle along the front wall, which tables stay out of.
-      text(ctx, ROOM_LABEL.common, tavern.entrance.x - 1.3, room.y + room.h - 0.5, font);
+    if (room === tavern.rooms[0]) {
+      // Beside the front door, in the aisle along the front wall, which furniture stays out of.
+      text(ctx, ROOM_LABEL[room.kind], tavern.entrance.x - 1.3, room.y + room.h - 0.5, font);
     } else {
       text(ctx, ROOM_LABEL[room.kind], ...labelSpot(tavern, room), font);
     }

@@ -12,7 +12,9 @@ export type TavernSize = (typeof TAVERN_SIZES)[number];
 export const TAVERN_QUALITIES = ['poor', 'medium', 'rich'] as const;
 export type TavernQuality = (typeof TAVERN_QUALITIES)[number];
 
-export type RoomKind = 'common' | 'kitchen' | 'storage' | 'guest';
+/** The rooms of a tavern, and those of the other interiors (see `interior/generate.ts`). */
+export type RoomKind =
+  'common' | 'kitchen' | 'storage' | 'guest' | 'living' | 'forge' | 'hall' | 'armory' | 'study' | 'sanctuary';
 
 /** A rectangular room, in squares. One square is 5 feet, the D&D battle grid. */
 export interface Room {
@@ -56,6 +58,13 @@ export const SOLID_KINDS = [
   'nightstand',
   'desk',
   'plant',
+  'anvil',
+  'forge',
+  'workbench',
+  'throne',
+  'altar',
+  'statue',
+  'pillar',
 ] as const;
 
 /** Pieces that stand on the floor or on other furniture without closing off a square. */
@@ -79,6 +88,7 @@ export const LOOSE_KINDS = [
   'debris',
   'cobweb',
   'rat',
+  'weapon-rack',
 ] as const;
 
 export type FurnitureKind = (typeof SOLID_KINDS)[number] | (typeof LOOSE_KINDS)[number];

@@ -193,6 +193,11 @@ body:not([data-screen='npc']) #npc-screen {
   cursor: grab;
 }
 
+/* Over a building that can be entered. */
+.site-stage.enterable {
+  cursor: pointer;
+}
+
 .site-stage.panning {
   cursor: grabbing;
 }

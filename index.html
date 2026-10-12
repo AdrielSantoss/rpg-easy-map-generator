@@ -13,8 +13,11 @@
         <button data-screen="world" class="active" title="Desenhe os continentes e gere o mapa do mundo">
           Mapa do mundo
         </button>
-        <button data-screen="tavern" title="Gere o interior de uma taverna, já na grade de combate">
-          Taverna
+        <button
+          data-screen="tavern"
+          title="Gere o interior de uma taverna, ferraria, casa, castelo, torre ou templo, na grade de combate"
+        >
+          Interiores
         </button>
         <button data-screen="site" title="Gere o mapa de uma vila, cidade, porto, torre, ruína ou masmorra">
           Locais
@@ -150,10 +153,31 @@
     <main class="layout" id="tavern-screen">
       <aside class="panel">
         <section>
+          <h2>Interior de</h2>
+          <div class="tool-grid">
+            <button data-interior-kind="tavern" title="Salão com balcão, cozinha, despensa e quartos">
+              Taverna
+            </button>
+            <button data-interior-kind="smithy" title="Oficina com forja e bigorna, depósito e quarto">
+              Ferraria
+            </button>
+            <button data-interior-kind="house" title="Sala, cozinha e quartos">Casa</button>
+            <button data-interior-kind="castle" title="Grande salão com trono, arsenal e aposentos">
+              Castelo
+            </button>
+            <button data-interior-kind="tower" title="O gabinete de um mago, com seus livros e seu caldeirão">
+              Torre
+            </button>
+            <button data-interior-kind="temple" title="Nave com altar e bancos, e a sacristia atrás">
+              Templo
+            </button>
+          </div>
+        </section>
+        <section>
           <h2>Tamanho</h2>
-          <button data-tavern-size="small" title="Um salão, cozinha e despensa">Pequena</button>
-          <button data-tavern-size="medium" title="Com quartos de hóspedes e escada">Média</button>
-          <button data-tavern-size="large" title="Mais quartos, mais mesas e um palco">Grande</button>
+          <button data-tavern-size="small" title="Poucos cômodos">Pequeno</button>
+          <button data-tavern-size="medium" title="Mais cômodos e mais espaço">Médio</button>
+          <button data-tavern-size="large" title="O maior, com uma ala a mais">Grande</button>
         </section>
         <section>
           <h2>Qualidade</h2>
@@ -163,7 +187,7 @@
           >
             Pobre
           </button>
-          <button data-tavern-quality="medium" title="Uma taverna comum, razoavelmente cuidada">Média</button>
+          <button data-tavern-quality="medium" title="Um lugar comum, razoavelmente cuidado">Média</button>
           <button
             data-tavern-quality="rich"
             title="Móveis finos, quartos padronizados, tudo arrumado e bem iluminado"
@@ -191,11 +215,13 @@
 
       <aside class="panel">
         <section>
-          <h2>Taverna</h2>
+          <h2>Interior</h2>
+          <label for="tavern-name">Nome</label>
+          <input id="tavern-name" type="text" spellcheck="false" autocomplete="off" maxlength="80" />
           <label for="tavern-seed">Seed</label>
           <input id="tavern-seed" type="text" spellcheck="false" autocomplete="off" />
-          <button id="tavern-reroll" class="primary" title="Sorteia outra taverna do mesmo tamanho">
-            Nova taverna
+          <button id="tavern-reroll" class="primary" title="Sorteia outro interior do mesmo tipo e tamanho">
+            Novo interior
           </button>
         </section>
         <section>
@@ -265,7 +291,11 @@
       </aside>
 
       <div class="tavern-center">
-        <div class="site-stage" id="site-stage" title="Role o mouse para aproximar; arraste para mover">
+        <div
+          class="site-stage"
+          id="site-stage"
+          title="Role o mouse para aproximar, arraste para mover, clique numa construção para ver o interior"
+        >
           <canvas id="site-canvas"></canvas>
           <button id="site-zoom-reset" title="Volta a mostrar o mapa inteiro" hidden>Ver tudo</button>
         </div>

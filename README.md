@@ -18,6 +18,10 @@ out on a square grid by an algorithm, and the notable places are numbered and na
 A structure on the world map opens straight on its own map ("Visualizar região"), which then takes after
 where it stands: the ground is the biome around it, and roads leave only by the sides its roads do.
 
+The **interiors** tab holds the tavern and, laid out the same way on the battle grid, a smithy, a house, a
+castle, a tower and a temple. Clicking a building on the map of a place opens its interior: the kind, the
+size and the state of the building carry over, and so does its name.
+
 A fourth tab makes **NPC tokens**: pick a race and a gender and get a painted portrait, cropped into a round
 token with a transparent background. The portraits are painted by an image model on Cloudflare Workers AI,
 which has a limited free daily allowance, so this tab is locked behind a password.
@@ -84,6 +88,7 @@ src/
   tavern/      Tavern interior generation on a battle grid
   npc/         What an NPC portrait should show, its character sheet, and the password check
   site/        Maps of single places: towns, ports, towers, ruins, dungeons
+  interior/    Interiors other than the tavern, and which interior each building of a town has
   project/     Save format and undo history
   render/      Canvas painting of the map and structure icons
   ui/          Sketch board, menus, sliders and the tavern screen
