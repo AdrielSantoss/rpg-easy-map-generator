@@ -577,9 +577,12 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
       }
     }
   }
+  /** Which side of town the river runs down, if there is one. */
+  let riverSide: 'left' | 'right' | null = null;
   if (rng() < plan.river && context.terrain !== 'desert') {
     // The river keeps to one side, so that the main square stays dry.
     const side = rng() < 0.5 ? 0.24 : 0.76;
+    riverSide = side < 0.5 ? 'left' : 'right';
     const width = plan.avenue + 1;
     for (let y = 0; y < h; y++) {
       const x = Math.round(core.x + core.w * side + noise(5, y * 0.06) * 3);
@@ -590,16 +593,36 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
   const cx = core.x + Math.floor(core.w / 2) + between(-3, 3, rng);
   const cy = core.y + Math.floor(core.h / 2) + between(-2, 2, rng);
   const avenue = plan.avenue;
-  // The castle stands at the north end of town, and the avenue leads to its gate.
-  const castle: Rect | null = plan.castle ? { x: cx - 9, y: core.y + 1, w: 18 + avenue, h: 13 } : null;
+  // The castle stands against the north wall: in the middle, at the head of the
+  // main avenue, or toward either corner, with an avenue of its own down to the
+  // main street. In the middle it would bar a road arriving from the north, so
+  // with one it keeps to a side. (For a castle in the south, see generateSite.)
+  const castleWidth = 18 + avenue;
+  // Nor is it built across the river.
+  const castleSpots = (['left', 'middle', 'right'] as const).filter(
+    (spot) => spot !== riverSide && (spot !== 'middle' || !context.exits.includes('north')),
+  );
+  const castleSpot = pick(castleSpots, rng);
+  const castle: Rect | null = plan.castle
+    ? {
+        x: castleSpot === 'left' ? core.x + 1 : castleSpot === 'right' ? coreRight - castleWidth - 1 : cx - 9,
+        y: core.y + 1,
+        w: castleWidth,
+        h: 13,
+      }
+    : null;
+  const centered = castle !== null && castleSpot === 'middle';
+  /** The column of the castle's gate, and of the avenue that leads to it. */
+  const gateX = castle ? castle.x + 9 : cx;
   const avenueTop = castle ? castle.y + castle.h + 1 : 0;
   for (let d = 0; d < avenue; d++) {
     const west = context.exits.includes('west') ? 0 : core.x;
     const east = context.exits.includes('east') ? w : coreRight;
     for (let x = west; x < east; x++) ground.road(x, cy + d);
-    const north = castle ? avenueTop : context.exits.includes('north') ? 0 : core.y;
+    const north = centered ? avenueTop : context.exits.includes('north') ? 0 : core.y;
     const south = plan.coast || !context.exits.includes('south') ? coreBottom : h;
     for (let y = north; y < south; y++) ground.road(cx + d, y);
+    if (castle && !centered) for (let y = avenueTop; y < cy; y++) ground.road(gateX + d, y);
   }
   const square: Rect = {
     x: cx - plan.square[0],
@@ -615,9 +638,8 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
     if (x1 - x0 >= 2 && y1 - y0 >= 2) quarters.push({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
   };
   if (castle) {
+    // A street runs round the castle; the quarters are what is left beside and below it.
     const left = castle.x - 1;
-    // The castle bars the way north, so the road from there comes in beside it.
-    if (context.exits.includes('north')) for (let y = 0; y < core.y; y++) ground.road(left, y);
     const right = castle.x + castle.w;
     const under = castle.y + castle.h;
     for (let y = core.y; y <= under; y++) {
@@ -625,10 +647,20 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
       ground.road(right, y);
     }
     for (let x = left; x <= right; x++) ground.road(x, under);
-    quarter(core.x, core.y, left, cy);
-    quarter(left + 1, under + 1, cx, cy);
-    quarter(cx + avenue, under + 1, right, cy);
-    quarter(right + 1, core.y, coreRight, cy);
+    quarter(left + 1, under + 1, gateX, cy);
+    quarter(gateX + avenue, under + 1, right, cy);
+    if (centered) {
+      quarter(core.x, core.y, left, cy);
+      quarter(right + 1, core.y, coreRight, cy);
+    } else if (castleSpot === 'left') {
+      quarter(core.x, core.y, left, cy);
+      quarter(right + 1, core.y, cx, cy);
+      quarter(cx + avenue, core.y, coreRight, cy);
+    } else {
+      quarter(core.x, core.y, cx, cy);
+      quarter(cx + avenue, core.y, left, cy);
+      quarter(right + 1, core.y, coreRight, cy);
+    }
   } else {
     quarter(core.x, core.y, cx, cy);
     quarter(cx + avenue, core.y, coreRight, cy);
@@ -641,10 +673,10 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
   if (castle) {
     ground.fill(castle, TILE.yard);
     // The gate, in the middle of the south wall.
-    for (let d = 0; d < avenue; d++) ground.road(cx + d, castle.y + castle.h - 1);
+    for (let d = 0; d < avenue; d++) ground.road(gateX + d, castle.y + castle.h - 1);
     const inner: Rect = { x: castle.x + 1, y: castle.y + 1, w: castle.w - 2, h: castle.h - 2 };
     site.walls.push(wallAround(ground, inner, rng));
-    const keep: Rect = { x: cx - 5 + Math.floor(avenue / 2), y: castle.y + 2, w: 10, h: 6 };
+    const keep: Rect = { x: gateX - 5 + Math.floor(avenue / 2), y: castle.y + 2, w: 10, h: 6 };
     site.buildings.push(building(keep, 'keep', rng));
     site.places.push({ name: `Castelo ${fantasyName(rng)}`, ...middle(keep) });
     site.buildings.push(building({ x: inner.x + 1, y: keep.y + keep.h + 1, w: 4, h: 2 }, 'stable', rng));
@@ -971,7 +1003,7 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
       if (x >= square.x - 1 && x <= square.x + square.w) continue;
       site.props.push({ kind: 'lamp', x: x + 0.5, y: x % 2 ? cy + 0.18 : cy + avenue - 0.18, angle: 0 });
     }
-    for (let y = castle ? castle.y + castle.h + 2 : core.y + 2; y < coreBottom - 1; y += 5) {
+    for (let y = centered && castle ? castle.y + castle.h + 2 : core.y + 2; y < coreBottom - 1; y += 5) {
       if (y >= square.y - 1 && y <= square.y + square.h) continue;
       site.props.push({ kind: 'lamp', x: y % 2 ? cx + 0.18 : cx + avenue - 0.18, y: y + 0.5, angle: 0 });
     }
@@ -1000,7 +1032,7 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
     put('cart', castle.x + 3, castle.y + castle.h - 3, 0.3);
     put('crates', castle.x + castle.w - 4, castle.y + castle.h - 3);
     put('haystack', castle.x + 2, castle.y + castle.h - 5);
-    for (const x of [cx - 2, cx + avenue + 1]) put('lamp', x, castle.y + castle.h - 2);
+    for (const x of [gateX - 2, gateX + avenue + 1]) put('lamp', x, castle.y + castle.h - 2);
   }
 
   // Woods outside; in town, trees along the streets and in the yards, bushes and flower beds.
@@ -1054,11 +1086,19 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
     vertical: false,
   });
   site.streets.push({
-    name: plan.castle ? 'Avenida do Rei' : names[1],
+    name: centered ? 'Avenida do Rei' : names[1],
     x: cx + avenue / 2,
     y: (square.y + square.h + coreBottom) / 2,
     vertical: true,
   });
+  if (castle && !centered) {
+    site.streets.push({
+      name: 'Avenida do Rei',
+      x: gateX + avenue / 2,
+      y: (castle.y + castle.h + cy) / 2 + 1,
+      vertical: true,
+    });
+  }
   return site;
 }
 
@@ -1367,6 +1407,34 @@ function dungeon(seed: string, rng: Rng, context: SiteContext): Site {
   return site;
 }
 
+/** The same place with north and south changed over. */
+function upsideDown(site: Site): Site {
+  const { w, h } = site;
+  const tiles = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) tiles.set(site.tiles.subarray(y * w, (y + 1) * w), (h - 1 - y) * w);
+  const point = <T extends { y: number }>(p: T): T => ({ ...p, y: h - p.y });
+  const cell = <T extends { y: number }>(c: T): T => ({ ...c, y: h - 1 - c.y });
+  return {
+    ...site,
+    tiles,
+    buildings: site.buildings.map((b) => ({ ...b, y: h - b.y - b.h })),
+    walls: site.walls.map((wall) => ({
+      ...wall,
+      y: h - wall.y - wall.h,
+      gates: wall.gates.map(cell),
+      towers: wall.towers.map(cell),
+      gaps: wall.gaps.map(cell),
+    })),
+    places: site.places.map(point),
+    streets: site.streets.map(point),
+    trees: site.trees.map(point),
+    rocks: site.rocks.map(point),
+    props: site.props.map((prop) => ({ ...point(prop), angle: -prop.angle })),
+    boats: site.boats.map(point),
+    doors: site.doors.map(cell),
+  };
+}
+
 /**
  * The map of a place of the given kind. The same kind, seed and surroundings
  * always give the same map. Left to itself, a place stands on open plains with
@@ -1381,5 +1449,12 @@ export function generateSite(
   const rng = seededRng(`site:${kind}:${seed}`);
   if (kind === 'tower') return tower(seed, rng, context);
   if (kind === 'dungeon') return dungeon(seed, rng, context);
+  if (kind === 'kingdom' && seededRng(`site:castle:${seed}`)() < 0.5) {
+    // Half the capitals have the castle in the south: the town is laid out
+    // with north and south changed over, and then turned.
+    const turn = (side: SiteSide): SiteSide =>
+      side === 'north' ? 'south' : side === 'south' ? 'north' : side;
+    return upsideDown(town(kind, seed, rng, { ...context, exits: context.exits.map(turn) }));
+  }
   return town(kind, seed, rng, context);
 }

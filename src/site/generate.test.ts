@@ -69,7 +69,7 @@ describe('towns', () => {
         expect(site.tiles.filter((t) => t === TILE.road).length).toBeGreaterThan(100);
         expect(site.tiles.filter((t) => t === TILE.plaza).length).toBeGreaterThan(20);
         expect(site.buildings.filter((b) => b.kind === 'house').length).toBeGreaterThan(25);
-        expect(site.streets).toHaveLength(2);
+        expect(site.streets.length).toBeGreaterThanOrEqual(2);
       }
     }
   });
@@ -99,6 +99,53 @@ describe('towns', () => {
       expect(site.places[0].name).toMatch(/^Castelo /);
       // The castle can be entered.
       expect(site.walls[0].gates.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('stand the castle in a different part of the capital from one to the next', () => {
+    const many = Array.from({ length: 30 }, (_, index) =>
+      generateSite('kingdom', `k${index}`, { exits: ['east', 'west'] }),
+    );
+    const keeps = many.map((site) => ({ site, keep: site.buildings.find((b) => b.kind === 'keep')! }));
+    const third = (at: number, size: number) => Math.min(2, Math.floor((at / size) * 3));
+    // North and south, and left, middle and right of each.
+    const spots = new Set(
+      keeps.map(
+        ({ site, keep }) => `${keep.y < site.h / 2 ? 'n' : 's'}${third(keep.x + keep.w / 2, site.w)}`,
+      ),
+    );
+    expect(spots.size).toBeGreaterThanOrEqual(5);
+    for (const { site, keep } of keeps) {
+      // Always against the wall, never in the middle of town, and with a road to its gate.
+      expect(Math.min(keep.y, site.h - keep.y - keep.h)).toBeLessThan(10);
+      expect(site.walls[0].gates.length).toBeGreaterThan(0);
+      expect(site.streets.map((street) => street.name)).toContain('Avenida do Rei');
+    }
+  });
+
+  it('never build the castle across the river', () => {
+    for (let index = 0; index < 40; index++) {
+      const site = generateSite('kingdom', `k${index}`);
+      const [castle] = site.walls;
+      // The river crosses the whole map, so it shows on the first and the last row.
+      for (const y of [0, site.h - 1]) {
+        for (let x = castle.x; x < castle.x + castle.w; x++) {
+          expect(site.tiles[y * site.w + x]).not.toBe(TILE.water);
+        }
+      }
+    }
+  });
+
+  it('keep the castle out of the way of a road arriving on its side', () => {
+    for (let index = 0; index < 30; index++) {
+      const site = generateSite('kingdom', `k${index}`, { exits: ['north', 'south'] });
+      const keep = site.buildings.find((b) => b.kind === 'keep')!;
+      // The main avenue runs the whole height of the map, so the castle is to one side of it.
+      const column = Array.from({ length: site.w }, (_, x) => x).find(
+        (x) => site.tiles[x] === TILE.road && site.tiles[(site.h - 1) * site.w + x] === TILE.road,
+      );
+      expect(column).toBeDefined();
+      expect(column! < keep.x || column! >= keep.x + keep.w).toBe(true);
     }
   });
 
