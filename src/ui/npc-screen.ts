@@ -331,7 +331,7 @@ export function initNpcScreen(root: HTMLElement): void {
       }
       const result = (await response.json()) as { image?: string; summary?: string; error?: string };
       if (!response.ok || !result.image) {
-        status.textContent = result.error ?? 'Não foi possível gerar o token.';
+        status.textContent = result.error ?? 'Não foi possível gerar o NPC.';
         return;
       }
       const token = {
