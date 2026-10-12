@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { NPC_GENDERS, NPC_RACES } from './prompt.ts';
+import { NPC_AGES, NPC_GENDERS, NPC_RACES, NPC_WEALTHS } from './prompt.ts';
 import { CLASSES } from './sheet-data.ts';
+import { SPRITE_PALETTES } from './sprite-palettes.ts';
+import { SPRITE_SHEETS } from './sprite-sheets.ts';
 import {
+  layersFor,
+  recolorTable,
   SHEET_COLUMNS,
   SHEET_ROWS,
   sheetCell,
@@ -11,7 +15,7 @@ import {
   SPRITE_OPTIONS,
   spriteFrameAt,
   spriteLooks,
-  spritePose,
+  type SpriteLook,
   type SpriteSubject,
 } from './sprite.ts';
 
@@ -23,6 +27,23 @@ const subject = (over: Partial<SpriteSubject> = {}): SpriteSubject => ({
   classId: 'fighter',
   ...over,
 });
+const ids = (look: SpriteLook) => look.layers.map((layer) => layer.id);
+const has = (look: SpriteLook, start: string) => ids(look).some((id) => id.startsWith(start));
+const tintOf = (look: SpriteLook, start: string) =>
+  look.layers.find((layer) => layer.id.startsWith(start))?.tint;
+
+/** Every look of every kind of NPC, for one seed. */
+function* everyLook(): Generator<SpriteLook> {
+  for (const race of NPC_RACES) {
+    for (const gender of NPC_GENDERS) {
+      for (const age of NPC_AGES) {
+        for (const classId of CLASSES) {
+          for (const wealth of NPC_WEALTHS) yield* spriteLooks({ race, gender, age, wealth, classId }, 5);
+        }
+      }
+    }
+  }
+}
 
 describe('spriteLooks', () => {
   it('offers five looks, the same every time for the same NPC', () => {
@@ -34,149 +55,165 @@ describe('spriteLooks', () => {
   it('keeps who the NPC is in all of them, and changes what could be changed', () => {
     for (let seed = 0; seed < 20; seed++) {
       const looks = spriteLooks(subject({ classId: 'bard' }), seed);
-      for (const key of ['skin', 'hair', 'height', 'width', 'beard'] as const) {
-        expect(new Set(looks.map((look) => look[key])).size).toBe(1);
+      expect(new Set(looks.map((look) => JSON.stringify(tintOf(look, 'body')))).size).toBe(1);
+      expect(new Set(looks.map((look) => look.scale)).size).toBe(1);
+      expect(new Set(looks.map((look) => has(look, 'beard'))).size).toBe(1);
+      // Clothes, hair cut or cape: something tells most of them apart.
+      expect(new Set(looks.map((look) => JSON.stringify(look.layers))).size).toBeGreaterThanOrEqual(4);
+    }
+  });
+
+  it('uses only sheets that were brought into the project, for every animation they are part of', () => {
+    const checked = new Set<string>();
+    for (const look of everyLook()) {
+      for (const animation of SPRITE_ANIMATIONS) {
+        for (const layer of layersFor(look, animation)) {
+          const path = `${layer.id}/${animation}`;
+          if (checked.has(path)) continue;
+          checked.add(path);
+          expect(SPRITE_SHEETS[layer.id], path).toContain(animation);
+        }
       }
-      // Clothes, hair cut, headgear or cape: something tells every two apart.
-      expect(new Set(looks.map((look) => JSON.stringify(look))).size).toBeGreaterThanOrEqual(4);
+    }
+    expect(checked.size).toBeGreaterThan(100);
+  });
+
+  it('recolors only between ramps that exist', () => {
+    for (const look of everyLook()) {
+      for (const layer of look.layers) {
+        if (!layer.tint) continue;
+        const ramps = SPRITE_PALETTES[layer.tint.material] as Record<string, readonly string[]>;
+        expect(ramps[layer.tint.from], `${layer.id}: ${layer.tint.from}`).toBeDefined();
+        expect(ramps[layer.tint.to], `${layer.id}: ${layer.tint.to}`).toBeDefined();
+      }
+    }
+  });
+
+  it('piles the layers from the lowest to the highest', () => {
+    for (const look of spriteLooks(subject({ classId: 'ranger' }), 3)) {
+      const order = look.layers.map((layer) => layer.z);
+      expect([...order].sort((a, b) => a - b)).toEqual(order);
+      // The body under its clothes, the clothes under the head, the head under what is worn on it.
+      const at = (start: string) => ids(look).findIndex((id) => id.startsWith(start));
+      expect(at('body')).toBeLessThan(at('torso'));
+      expect(at('torso')).toBeLessThan(at('head'));
     }
   });
 
   it('gives every race its body and its marks', () => {
     const of = (race: (typeof NPC_RACES)[number], gender: (typeof NPC_GENDERS)[number] = 'male') =>
       spriteLooks(subject({ race, gender }), 3)[0];
-    expect(of('dwarf').height).toBeLessThan(of('human').height);
-    expect(of('dwarf').width).toBeGreaterThan(of('human').width);
-    expect(of('halfling').height).toBeLessThan(of('dwarf').height);
-    expect(of('orc').width).toBeGreaterThan(of('elf').width);
-    expect(of('elf').ears).toBe('pointed');
-    expect(of('human').ears).toBe('round');
-    expect(of('tiefling').horns).toBe(true);
-    expect(of('orc').tusks).toBe(true);
-    expect(of('half-orc').tusks).toBe(true);
-    expect(of('dragonborn')).toMatchObject({ snout: true, hairStyle: 'bald', beard: false });
-    expect(of('dwarf').beard).toBe(true);
-    expect(of('dwarf', 'female').beard).toBe(false);
-    expect(of('human').horns || of('human').tusks || of('human').snout).toBe(false);
+    expect(of('dwarf').scale).toBeLessThan(of('human').scale);
+    expect(of('halfling').scale).toBeLessThan(of('dwarf').scale);
+    expect(of('orc').scale).toBeGreaterThan(of('human').scale);
+    expect(has(of('elf'), 'ears-elven')).toBe(true);
+    expect(has(of('human'), 'ears-elven')).toBe(false);
+    expect(has(of('tiefling'), 'horns')).toBe(true);
+    expect(has(of('orc'), 'head-orc-male')).toBe(true);
+    expect(has(of('half-orc', 'female'), 'head-orc-female')).toBe(true);
+    expect(has(of('dragonborn'), 'head-lizard')).toBe(true);
+    expect(has(of('dragonborn'), 'hair')).toBe(false);
+    expect(has(of('dragonborn'), 'beard')).toBe(false);
+    expect(has(of('dwarf'), 'beard')).toBe(true);
+    expect(has(of('dwarf', 'female'), 'beard')).toBe(false);
+    // An orc is green, and its head is recolored from the green it was drawn in.
+    expect(tintOf(of('orc'), 'body')?.to).toMatch(/green/);
+    expect(tintOf(of('orc'), 'head')).toMatchObject({ from: 'green', to: tintOf(of('orc'), 'body')?.to });
   });
 
   it('dresses each class for what it does', () => {
-    const outfit = (classId: (typeof CLASSES)[number]) => spriteLooks(subject({ classId }), 3)[0].outfit;
-    expect(outfit('fighter')).toBe('armor');
-    expect(outfit('paladin')).toBe('armor');
-    expect(outfit('wizard')).toBe('robe');
-    expect(outfit('cleric')).toBe('robe');
-    expect(outfit('rogue')).toBe('leather');
-    expect(outfit('barbarian')).toBe('fur');
-    expect(outfit('commoner')).toBe('tunic');
+    const of = (classId: (typeof CLASSES)[number], gender: 'male' | 'female' = 'male') =>
+      spriteLooks(subject({ classId, gender }), 3)[0];
+    for (const classId of ['fighter', 'paladin'] as const) {
+      expect(has(of(classId), 'torso-plate')).toBe(true);
+      expect(has(of(classId), 'legs-plate')).toBe(true);
+      expect(tintOf(of(classId), 'torso-plate')?.material).toBe('metal');
+    }
+    for (const classId of ['wizard', 'cleric', 'druid', 'monk'] as const) {
+      expect(has(of(classId), 'legs-skirt')).toBe(true);
+      // The robe is of one color, top to hem.
+      expect(tintOf(of(classId), 'legs-skirt')).toEqual(tintOf(of(classId), 'torso-shirt'));
+    }
+    expect(has(of('rogue'), 'torso-leather')).toBe(true);
+    expect(has(of('commoner'), 'torso-shirt')).toBe(true);
+    // A barbarian man goes bare-chested; a woman does not.
+    expect(has(of('barbarian'), 'torso')).toBe(false);
+    expect(has(of('barbarian', 'female'), 'torso-leather')).toBe(true);
     // A pointed hat is the wizard's, and nobody else's.
     for (let seed = 0; seed < 20; seed++) {
       for (const classId of CLASSES) {
-        const hats = spriteLooks(subject({ classId }), seed).filter((look) => look.headgear === 'hat');
+        const hats = spriteLooks(subject({ classId }), seed).filter((look) => has(look, 'hat-wizard'));
         if (classId !== 'wizard') expect(hats).toHaveLength(0);
       }
     }
     expect(
       Array.from({ length: 10 }, (_, seed) => spriteLooks(subject({ classId: 'wizard' }), seed))
         .flat()
-        .some((look) => look.headgear === 'hat'),
+        .some((look) => has(look, 'hat-wizard')),
     ).toBe(true);
+  });
+
+  it('uses the sheets drawn for the build of the NPC', () => {
+    const man = spriteLooks(subject({ gender: 'male', classId: 'commoner' }), 3)[0];
+    const woman = spriteLooks(subject({ gender: 'female', classId: 'commoner' }), 3)[0];
+    for (const part of ['body', 'torso', 'legs', 'feet']) {
+      expect(ids(man).find((id) => id.startsWith(part))).toMatch(/-male$/);
+      expect(ids(woman).find((id) => id.startsWith(part))).toMatch(/-female$/);
+    }
+  });
+
+  it('hides the hair under a hood or a helm, and the weapons until they are used', () => {
+    for (const look of everyLook()) {
+      if (has(look, 'hat-hood') || has(look, 'hat-helm')) expect(has(look, 'hair')).toBe(false);
+      for (const animation of ['idle', 'walk'] as const) {
+        expect(layersFor(look, animation).some((layer) => /sword|bow|arrow/.test(layer.id))).toBe(false);
+      }
+      expect(layersFor(look, 'slash').some((layer) => layer.id === 'sword-fg')).toBe(true);
+      expect(layersFor(look, 'slash').some((layer) => layer.id.startsWith('bow'))).toBe(false);
+      expect(layersFor(look, 'shoot').some((layer) => layer.id === 'arrow')).toBe(true);
+    }
   });
 
   it('makes a child small, beardless and never dressed for war', () => {
     for (let seed = 0; seed < 20; seed++) {
+      const grown = spriteLooks(subject({ race: 'dwarf', classId: 'fighter' }), seed)[0];
       for (const look of spriteLooks(subject({ age: 'child', race: 'dwarf', classId: 'fighter' }), seed)) {
-        expect(look.height).toBeLessThan(0.7);
-        expect(look.beard).toBe(false);
-        expect(look.outfit).toBe('tunic');
-        expect(look.headgear).not.toBe('helm');
-        expect(look.cape).toBeNull();
+        expect(look.scale).toBeLessThan(grown.scale);
+        expect(has(look, 'beard')).toBe(false);
+        expect(has(look, 'torso-plate')).toBe(false);
+        expect(has(look, 'hat')).toBe(false);
+        expect(has(look, 'cape')).toBe(false);
       }
     }
   });
 
-  it('greys the hair of the old, and trims the rich in gold', () => {
+  it('greys the hair of the old, and gives them an older face', () => {
     for (let seed = 0; seed < 10; seed++) {
-      expect(['#bdbdbd', '#e6e6e0', '#9a9a9a']).toContain(
-        spriteLooks(subject({ age: 'elder' }), seed)[0].hair,
-      );
-      expect(spriteLooks(subject({ wealth: 'noble' }), seed)[0].trim).toBe('#d2ad5c');
-    }
-  });
-
-  it('gives a look for every race, gender and class', () => {
-    for (const race of NPC_RACES) {
-      for (const gender of NPC_GENDERS) {
-        for (const classId of CLASSES) {
-          for (const look of spriteLooks(subject({ race, gender, classId }), 1)) {
-            for (const color of [look.skin, look.hair, look.top, look.trim, look.legs, look.boots]) {
-              expect(color).toMatch(/^#[0-9a-f]{6}$/);
-            }
-          }
-        }
-      }
+      const look = spriteLooks(subject({ age: 'elder', classId: 'commoner' }), seed)[0];
+      expect(has(look, 'head-human-male-elder')).toBe(true);
+      const hair = tintOf(look, 'hair') ?? tintOf(look, 'beard');
+      if (hair) expect(['gray', 'white', 'platinum', 'ash']).toContain(hair.to);
     }
   });
 });
 
-describe('spritePose', () => {
-  it('wraps round past the last frame, and before the first', () => {
-    for (const animation of SPRITE_ANIMATIONS) {
-      const count = SPRITE_FRAMES[animation];
-      expect(spritePose(animation, count)).toEqual(spritePose(animation, 0));
-      expect(spritePose(animation, -1)).toEqual(spritePose(animation, count - 1));
+describe('recolorTable', () => {
+  it('maps every color of one ramp to the one at the same place in another', () => {
+    const table = recolorTable({ material: 'body', from: 'light', to: 'green' });
+    expect(table.size).toBe(SPRITE_PALETTES.body.light.length);
+    const number = (color: string) => parseInt(color.slice(1), 16);
+    for (const [index, color] of SPRITE_PALETTES.body.light.entries()) {
+      expect(table.get(number(color))).toBe(number(SPRITE_PALETTES.body.green[index]));
     }
   });
 
-  it('stands still but for breathing when idle', () => {
-    for (let frame = 0; frame < SPRITE_FRAMES.idle; frame++) {
-      const pose = spritePose('idle', frame);
-      expect(pose).toMatchObject({ legFront: 0, legBack: 0, weapon: 'none', arrow: null, slash: null });
-    }
-    expect(new Set([0, 1, 2, 3].map((frame) => spritePose('idle', frame).bob)).size).toBeGreaterThan(1);
+  it('leaves a sheet as it is when the ramp is its own', () => {
+    for (const [from, to] of recolorTable({ material: 'cloth', from: 'white', to: 'white' }))
+      expect(to).toBe(from);
   });
 
-  it('runs with legs opposed, and each arm against its leg', () => {
-    for (let frame = 0; frame < SPRITE_FRAMES.run; frame++) {
-      const pose = spritePose('run', frame);
-      expect(pose.legFront).toBeCloseTo(-pose.legBack);
-      expect(pose.armFront).toBeCloseTo(-pose.armBack);
-      expect(Math.sign(pose.armFront) * Math.sign(pose.legFront)).toBeLessThanOrEqual(0);
-      expect(pose.lean).toBeGreaterThan(0);
-    }
-    const strides = Array.from(
-      { length: SPRITE_FRAMES.run },
-      (_, frame) => spritePose('run', frame).legFront,
-    );
-    expect(Math.max(...strides)).toBeGreaterThan(0.6);
-    expect(Math.min(...strides)).toBeLessThan(-0.6);
-  });
-
-  it('raises the sword, brings it down, and leaves a streak only in the cut', () => {
-    const arm = Array.from({ length: SPRITE_FRAMES.sword }, (_, frame) => spritePose('sword', frame));
-    const top = arm.findIndex((pose) => pose.armFront === Math.max(...arm.map((p) => p.armFront)));
-    expect(arm[top].armFront).toBeGreaterThan(Math.PI * 0.8);
-    expect(arm[arm.length - 1].armFront).toBeLessThan(0.5);
-    for (const [frame, pose] of arm.entries()) {
-      expect(pose.weapon).toBe('sword');
-      // Nothing streaks the air before the arm has come over.
-      if (frame <= top) expect(pose.slash).toBeNull();
-    }
-    expect(arm.filter((pose) => pose.slash !== null).length).toBeGreaterThanOrEqual(2);
-  });
-
-  it('draws the bow, holds, and lets the arrow fly on', () => {
-    const shot = Array.from({ length: SPRITE_FRAMES.bow }, (_, frame) => spritePose('bow', frame));
-    const full = shot.findIndex((pose) => pose.draw === 1);
-    expect(full).toBeGreaterThan(0);
-    // While the string is back the arrow is on it; once loosed it only gets further away.
-    for (const pose of shot) if (pose.draw > 0) expect(pose.arrow).toBe(0);
-    const flight = shot
-      .map((pose) => pose.arrow)
-      .filter((arrow): arrow is number => arrow !== null && arrow > 0);
-    expect(flight.length).toBeGreaterThanOrEqual(2);
-    expect([...flight].sort((a, b) => a - b)).toEqual(flight);
-    expect(shot[full].armFront).toBeCloseTo(Math.PI / 2, 1);
+  it('refuses a ramp that does not exist', () => {
+    expect(() => recolorTable({ material: 'cloth', from: 'white', to: 'plaid' })).toThrow();
   });
 });
 
@@ -197,13 +234,14 @@ describe('the sprite sheet', () => {
     }
     expect(cells.size).toBe(frames);
     expect(SHEET_ROWS).toBe(16);
+    expect(SHEET_COLUMNS).toBe(13);
   });
 
   it('plays each animation through at its own speed, and round again', () => {
-    expect(spriteFrameAt('run', 0)).toBe(0);
-    expect(spriteFrameAt('run', 0.1)).toBe(1);
-    const second = Array.from({ length: 40 }, (_, k) => spriteFrameAt('bow', k / 20));
-    expect(new Set(second).size).toBe(SPRITE_FRAMES.bow);
-    expect(Math.max(...second)).toBe(SPRITE_FRAMES.bow - 1);
+    expect(spriteFrameAt('walk', 0)).toBe(0);
+    expect(spriteFrameAt('walk', 0.1)).toBe(1);
+    const second = Array.from({ length: 60 }, (_, k) => spriteFrameAt('shoot', k / 30));
+    expect(new Set(second).size).toBe(SPRITE_FRAMES.shoot);
+    expect(Math.max(...second)).toBe(SPRITE_FRAMES.shoot - 1);
   });
 });

@@ -173,6 +173,23 @@ body:not([data-screen='npc']) #npc-screen {
   box-shadow: 0 8px 30px rgb(0 0 0 / 45%);
 }
 
+/* The figure is pixel art: enlarged, its pixels must stay square. */
+.sprite-options canvas,
+#sprite-preview {
+  image-rendering: pixelated;
+}
+
+.sprite-credit {
+  margin: 8px auto 0;
+  max-width: 420px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.sprite-credit a {
+  color: var(--accent);
+}
+
 .sprite-row {
   display: flex;
   justify-content: center;

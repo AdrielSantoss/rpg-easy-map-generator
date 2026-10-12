@@ -392,7 +392,7 @@
             </button>
             <button
               data-view="sprite"
-              title="O bonequinho do NPC visto de cima, para usar nos mapas, com suas animações"
+              title="O bonequinho do NPC em pixel art, para usar nos mapas, com suas animações"
               disabled
             >
               Sprite
@@ -407,15 +407,19 @@
           <div id="npc-sprite" data-pane="sprite">
             <p class="sprite-hint">Escolha uma das cinco aparências. A escolhida fica guardada com o NPC.</p>
             <div class="sprite-options" id="sprite-options"></div>
-            <canvas id="sprite-preview" width="384" height="384"></canvas>
+            <canvas id="sprite-preview" width="384" height="352"></canvas>
             <div class="sprite-row" id="sprite-animations"></div>
             <div class="sprite-row" id="sprite-facings"></div>
             <button
               id="sprite-save"
-              title="Baixa todos os quadros em uma imagem de fundo transparente: uma linha por animação e direção"
+              title="Baixa todos os quadros em uma imagem de fundo transparente: uma linha por animação e direção, em células de 128 px"
             >
               Baixar sprite sheet
             </button>
+            <p class="sprite-credit">
+              Arte do <a href="/lpc/CREDITS.md" target="_blank" rel="noopener">Liberated Pixel Cup</a>, de
+              vários autores, sob CC-BY-SA 3.0 / GPL 3.0. Ao usar um sprite, dê o crédito a eles.
+            </p>
           </div>
           <div id="npc-history"></div>
         </div>

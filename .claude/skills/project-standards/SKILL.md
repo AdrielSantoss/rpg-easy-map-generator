@@ -114,3 +114,15 @@ CI (`.github/workflows/ci.yml`) runs the same commands on every push and pull re
 | `npm run build`  | Typecheck and build to `dist/`             |
 
 For commit messages and branch names, follow the `commit` skill.
+
+## Art that is not ours
+
+The NPC sprites are built from sheets of the Liberated Pixel Cup, under `public/lpc`. They are other
+people's work under their own licenses (CC-BY-SA 3.0, GPL 3.0 and others), so:
+
+- Never add, replace or edit a sheet by hand. Bring sheets in with the scripts in `scripts/lpc`, which also
+  rewrite `public/lpc/CREDITS.md`, `src/npc/sprite-sheets.ts` and `src/npc/sprite-palettes.ts`.
+- Every author of every sheet used must stay listed in `public/lpc/CREDITS.md`, and the screen that shows
+  the sprites must keep its link to it.
+- `src/npc/sprite.ts` only says which layers and colors make a figure; it must use nothing that is not in
+  `sprite-sheets.ts` (a test checks this).

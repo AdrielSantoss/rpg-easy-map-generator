@@ -31,9 +31,9 @@ class and background, age the level, wealth the purse. The complete sheet follow
 edited in place and saves as a PDF; a short version is a card styled after the class and saves as a PNG.
 The latest NPCs stay in the browser between visits, and any of them can be saved to a file and opened again.
 
-Every NPC also has a **sprite**, seen from above and painted like the maps, drawn by rule: five looks to choose from, each
-animated standing, running, cutting with a sword and shooting a bow in four directions, and saved as a
-sprite sheet.
+Every NPC also has a **sprite** in pixel art, put together from the layered sheets of the Liberated Pixel
+Cup: five looks to choose from, each animated standing, walking, cutting with a sword and shooting a bow in
+four directions, and saved as a sprite sheet.
 
 ## How the world map works
 
@@ -101,3 +101,11 @@ functions/     The one server-side piece: checks the password and calls the imag
 ```
 
 Coding, testing and commit conventions live in [.claude/skills](.claude/skills).
+
+## Credits
+
+The character sprites are not this project's own work. They are sheets from the
+[Universal LPC Spritesheet Character Generator](https://github.com/LiberatedPixelCup/Universal-LPC-Spritesheet-Character-Generator),
+drawn by many artists for and after the Liberated Pixel Cup, and they keep their own licenses (CC-BY-SA 3.0,
+GPL 3.0 and others, sheet by sheet). Every author is listed in [public/lpc/CREDITS.md](public/lpc/CREDITS.md).
+If you use a sprite made with this tool, credit them too.
