@@ -7,21 +7,24 @@ import {
   type NpcAge,
   type NpcExpression,
   type NpcGender,
-  type NpcOptions,
   type NpcRace,
   type NpcWealth,
 } from '../npc/prompt.ts';
+import { parseNpc, rememberNpc, serializeNpc, type SavedNpc } from '../npc/saved.ts';
 import { CLASS, CLASSES, type ClassId } from '../npc/sheet-data.ts';
-import { generateSheet, MAX_LEVEL, type CharacterSheet } from '../npc/sheet.ts';
+import { generateSheet, MAX_LEVEL } from '../npc/sheet.ts';
 import { drawSheetCard } from '../render/sheet-card.ts';
 import { drawToken } from '../render/token.ts';
 import { initSheetView } from './npc-sheet.ts';
+import { forgetNpc, loadNpcs, storeNpc } from './npc-store.ts';
 
 /** Where the password is kept in this browser once it has been accepted. */
 const KEY_STORAGE = 'rpg-easy-map-generator:npc-key';
 const ENDPOINT = '/api/npc';
-/** How many past tokens stay on screen to go back to. */
-const HISTORY = 8;
+/** How many NPCs are kept, on screen and in this browser, to go back to. */
+const HISTORY = 12;
+/** How long after the last keystroke an edited sheet is stored, in ms. */
+const STORE_DELAY = 400;
 
 const RACE_LABEL: Record<NpcRace, string> = {
   human: 'Humano',
@@ -65,36 +68,27 @@ const WEALTH_LABEL: Record<NpcWealth | Any, string> = {
 /** What is shown in the middle: the round token, or the character sheet short or complete. */
 type View = 'token' | 'card' | 'sheet';
 
-interface Token {
-  image: string;
-  summary: string;
-  file: string;
-  /** What the portrait was asked for, which the sheet is written from too. */
-  race: NpcRace;
-  gender: NpcGender;
-  seed: number;
-  options: NpcOptions;
-  /** How many times the sheet was rolled again. */
-  roll: number;
-  sheet: CharacterSheet;
+type Token = SavedNpc;
+
+function downloadBlob(blob: Blob, file: string): void {
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = file;
+  link.click();
+  URL.revokeObjectURL(link.href);
 }
 
 function download(canvas: HTMLCanvasElement, file: string): void {
-  canvas.toBlob((blob) => {
-    if (!blob) return;
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = file;
-    link.click();
-    URL.revokeObjectURL(link.href);
-  }, 'image/png');
+  canvas.toBlob((blob) => blob && downloadBlob(blob, file), 'image/png');
 }
 
 /**
  * The NPC screen. The portraits come from an image model with a limited daily
  * allowance, so the screen is locked behind a password that the server checks,
  * and each press of the button makes exactly one token. The character sheet
- * that goes with each portrait is written here in the browser, by rule.
+ * that goes with each portrait is written here in the browser, by rule. The
+ * latest NPCs are kept in the browser, and any of them can be saved to a file
+ * and opened again.
  */
 export function initNpcScreen(root: HTMLElement): void {
   const find = <T extends HTMLElement>(selector: string) => root.querySelector(selector) as T;
@@ -108,6 +102,8 @@ export function initNpcScreen(root: HTMLElement): void {
   const saveCard = find<HTMLButtonElement>('#npc-save-card');
   const saveSheet = find<HTMLButtonElement>('#npc-save-sheet');
   const reroll = find<HTMLButtonElement>('#npc-reroll');
+  const exportNpc = find<HTMLButtonElement>('#npc-export');
+  const fileInput = find<HTMLInputElement>('#npc-file');
   const classSelect = find<HTMLSelectElement>('#npc-class');
   const levelSelect = find<HTMLSelectElement>('#npc-level');
   const passwordInput = find<HTMLInputElement>('#npc-password');
@@ -123,7 +119,7 @@ export function initNpcScreen(root: HTMLElement): void {
   let shown: Token | null = null;
   /** The portrait of the token on screen, once loaded. */
   let picture: HTMLImageElement | null = null;
-  const tokens: Token[] = [];
+  let tokens: Token[] = [];
 
   const request = (init: RequestInit = {}) =>
     fetch(ENDPOINT, { ...init, headers: { ...init.headers, Authorization: `Bearer ${password}` } });
@@ -136,8 +132,25 @@ export function initNpcScreen(root: HTMLElement): void {
   const drawCard = () => {
     if (shown && picture?.complete) drawSheetCard(card, shown.sheet, picture);
   };
-  // Whatever is typed on the complete sheet shows on the short one too.
-  const sheetView = initSheetView(find('#npc-sheet'), drawCard);
+  let storing = 0;
+  let unstored: Token | null = null;
+  /** Stores the NPC on screen a moment after the last change to it. */
+  const keep = () => {
+    clearTimeout(storing);
+    // A change to another NPC is still waiting: it must not be lost.
+    if (unstored && unstored !== shown) void storeNpc(unstored);
+    unstored = shown;
+    storing = window.setTimeout(() => {
+      if (unstored) void storeNpc(unstored);
+      unstored = null;
+    }, STORE_DELAY);
+  };
+
+  // Whatever is typed on the complete sheet shows on the short one too, and is kept.
+  const sheetView = initSheetView(find('#npc-sheet'), () => {
+    drawCard();
+    keep();
+  });
 
   const setView = (view: View) => {
     root.dataset.view = view;
@@ -238,25 +251,33 @@ export function initNpcScreen(root: HTMLElement): void {
     loading.src = token.image;
     summary.textContent = token.summary;
     sheetView.show(token.sheet, token.image);
-    for (const button of [save, saveCard, saveSheet, reroll, ...viewButtons]) button.disabled = false;
+    for (const button of [save, saveCard, saveSheet, reroll, exportNpc, ...viewButtons])
+      button.disabled = false;
     for (const [index, thumb] of [...history.children].entries()) {
       thumb.classList.toggle('active', tokens[index] === token);
     }
   };
 
-  const remember = (token: Token) => {
-    tokens.unshift(token);
-    tokens.length = Math.min(tokens.length, HISTORY);
+  const listTokens = () => {
     history.replaceChildren(
       ...tokens.map((past) => {
         const thumb = document.createElement('img');
         thumb.src = past.image;
         thumb.alt = past.summary;
-        thumb.title = past.summary;
+        thumb.title = [past.sheet.name, past.summary].filter(Boolean).join(' · ');
         thumb.addEventListener('click', () => show(past));
         return thumb;
       }),
     );
+  };
+
+  /** Puts an NPC at the head of the list, here and in the browser's storage, and shows it. */
+  const remember = (token: Token) => {
+    const { list, dropped } = rememberNpc(tokens, token, HISTORY);
+    tokens = list;
+    for (const old of dropped) void forgetNpc(old.id);
+    void storeNpc(token);
+    listTokens();
     show(token);
   };
 
@@ -266,6 +287,7 @@ export function initNpcScreen(root: HTMLElement): void {
     shown.sheet = writeSheet(shown);
     sheetView.show(shown.sheet, shown.image);
     drawCard();
+    keep();
   };
   classSelect.addEventListener('change', rewrite);
   levelSelect.addEventListener('change', rewrite);
@@ -340,6 +362,8 @@ export function initNpcScreen(root: HTMLElement): void {
         summary: result.summary ?? '',
         file: `npc-${race}-${gender}-${seed}`,
         roll: 0,
+        id: `${Date.now()}-${seed}`,
+        created: Date.now(),
       };
       remember({ ...token, sheet: writeSheet(token) });
       status.textContent = '';
@@ -368,6 +392,26 @@ export function initNpcScreen(root: HTMLElement): void {
     document.title = title;
   });
 
+  exportNpc.addEventListener('click', () => {
+    if (!shown) return;
+    downloadBlob(new Blob([serializeNpc(shown)], { type: 'application/json' }), `${shown.file}.npc.json`);
+  });
+  find('#npc-import').addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    // Cleared so that choosing the same file again is still a change.
+    fileInput.value = '';
+    if (!file) return;
+    const npc = parseNpc(await file.text());
+    if (!npc) {
+      status.textContent = 'Este arquivo não é um NPC salvo por esta ferramenta.';
+      return;
+    }
+    // Opened now, so it goes to the head of the list and stays there on the next visit.
+    remember({ ...npc, created: Date.now() });
+    status.textContent = '';
+  });
+
   find('#npc-logout').addEventListener('click', () => {
     localStorage.removeItem(KEY_STORAGE);
     password = '';
@@ -383,4 +427,13 @@ export function initNpcScreen(root: HTMLElement): void {
   }
   root.dataset.locked = String(password === '');
   setView('token');
+
+  void loadNpcs().then((stored) => {
+    // Anything generated while the storage was being read stays ahead of what was stored.
+    const fresh = new Set(tokens.map((token) => token.id));
+    tokens = [...tokens, ...stored.filter((npc) => !fresh.has(npc.id))].slice(0, HISTORY);
+    listTokens();
+    if (!shown && tokens.length > 0) show(tokens[0]);
+    else if (shown) show(shown);
+  });
 }

@@ -19,6 +19,7 @@ which has a limited free daily allowance, so this tab is locked behind a passwor
 Each token comes with a **D&D 5e character sheet** written by rule, no AI involved: the NPC's trade decides
 class and background, age the level, wealth the purse. The complete sheet follows the official layout, can be
 edited in place and saves as a PDF; a short version is a card styled after the class and saves as a PNG.
+The latest NPCs stay in the browser between visits, and any of them can be saved to a file and opened again.
 
 ## How the world map works
 

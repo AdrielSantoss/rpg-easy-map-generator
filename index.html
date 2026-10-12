@@ -294,6 +294,21 @@
           <p class="hint">Cada NPC gasta um pouco da cota diária gratuita da IA.</p>
         </section>
         <section>
+          <h2>Arquivo</h2>
+          <div class="pair">
+            <button
+              id="npc-export"
+              title="Salva o NPC inteiro, retrato e ficha, num arquivo para abrir depois ou em outro computador"
+              disabled
+            >
+              Salvar
+            </button>
+            <button id="npc-import" title="Abre um NPC salvo por esta ferramenta">Abrir</button>
+          </div>
+          <input id="npc-file" type="file" accept=".json,application/json" hidden />
+          <p class="hint">Os últimos 12 NPCs ficam guardados neste navegador.</p>
+        </section>
+        <section>
           <h2>Expressão</h2>
           <div class="tool-grid" id="npc-expressions"></div>
         </section>
