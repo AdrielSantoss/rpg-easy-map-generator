@@ -3,3 +3,4 @@ dist
 .claude/settings.local.json
 .vitest
 .wrangler
+.dev.vars

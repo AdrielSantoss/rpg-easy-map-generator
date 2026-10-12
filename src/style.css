@@ -52,9 +52,86 @@ h1 {
   border-radius: 999px;
 }
 
-body[data-screen='world'] #tavern-screen,
-body[data-screen='tavern'] #world-screen {
+/* Only the screen of the chosen tab is shown. */
+body:not([data-screen='world']) #world-screen,
+body:not([data-screen='tavern']) #tavern-screen,
+body:not([data-screen='npc']) #npc-screen {
   display: none;
+}
+
+/* The NPC screen shows either the password form or the tool, never both. */
+#npc-screen[data-locked='true'] .npc-open,
+#npc-screen[data-locked='false'] .npc-locked {
+  display: none;
+}
+
+.npc-center {
+  flex: 0 1 560px;
+  min-width: 0;
+  text-align: center;
+}
+
+#npc-lock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 360px;
+  margin: 48px auto 0;
+  padding: 22px;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+#npc-lock h2 {
+  color: var(--text);
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+#npc-lock p {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* The token is round and transparent outside the ring; the checks show that. */
+#npc-token {
+  display: block;
+  width: min(100%, calc(100vh - var(--header-height) - 190px));
+  aspect-ratio: 1;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: repeating-conic-gradient(#2f2924 0% 25%, #3a332d 0% 50%) 50% / 28px 28px;
+  box-shadow: 0 10px 34px rgb(0 0 0 / 55%);
+}
+
+#npc-summary {
+  min-height: 1.4em;
+  margin: 12px 0 8px;
+  font-size: 1rem;
+}
+
+#npc-history {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+#npc-history img {
+  width: 54px;
+  height: 54px;
+  object-fit: cover;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+#npc-history img.active {
+  border-color: var(--accent);
 }
 
 /* The tavern is as wide as its own proportions allow, within the space between the panels. */

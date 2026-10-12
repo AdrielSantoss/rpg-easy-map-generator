@@ -26,16 +26,31 @@ src/
   regions/     Pure naming of map features: seas, landmasses, forests, mountain ranges.
   project/     Pure save format: turning the user's work into text and back, validated.
   tavern/      Pure tavern interiors on a 5-foot battle grid: rooms, doors, furniture.
+  npc/         Pure NPC descriptions (the prompt for the image model) and the password check.
   view/        Pure zoom and pan math for the map frame.
   render/      Canvas 2D painting: the world map and what goes on it, and the tavern battle map.
   ui/          DOM widgets: sketch board, sliders, zoom, structure and region menus.
   testing/     Helpers shared by tests. Never imported by app code.
   main.ts      Wires the DOM to the modules above. The only file that reads the page.
+functions/     Cloudflare Pages Functions: the only code that runs on a server.
 ```
 
 Dependencies point one way: `main.ts` → `ui`, `render` → the pure folders (`project`, `regions`,
-`structures`, `tavern`, `view`, `generator`). Nothing in a pure folder may touch `document`, `window` or a canvas.
+`structures`, `tavern`, `npc`, `view`, `generator`). Nothing in a pure folder may touch `document`, `window` or a canvas.
 That keeps them testable in Node, so put logic there and keep `render/`, `ui/` and `main.ts` thin.
+
+## The server-side piece
+
+Everything runs in the browser except the NPC portraits, which are painted by an image model on Cloudflare
+Workers AI. That model has a small free daily allowance shared by everyone, so:
+
+- `functions/api/npc.ts` is the only way to reach it, and it answers only with the right password. The
+  password is a Cloudflare secret (`NPC_PASSWORD`); it must never appear in the repository, in the built
+  site, or in a log.
+- The picture is described on the server from fixed lists in `src/npc/` (race, gender and a seed are all
+  the browser may send). Never pass text from the browser into the prompt.
+- Keep the function thin: logic goes in `src/npc/`, where it is tested.
+- It does not run under `npm run dev`. Verify changes to it on a deployment.
 
 ## Core rules
 

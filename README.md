@@ -12,6 +12,10 @@ A second tab generates **tavern interiors** as battle maps on the 5-foot D&D gri
 common room with a bar, fireplace and tables, a kitchen, a storeroom and, in the larger sizes, guest rooms,
 stairs and a stage. The picture exports at 70 pixels per square, ready for a virtual tabletop.
 
+A third tab makes **NPC tokens**: pick a race and a gender and get a painted portrait, cropped into a round
+token with a transparent background. The portraits are painted by an image model on Cloudflare Workers AI,
+which has a limited free daily allowance, so this tab is locked behind a password.
+
 ## How the world map works
 
 1. **Sketch**: draw the coastlines on the board. Small gaps are closed for you, and an outline drawn inside
@@ -41,6 +45,16 @@ Every push to `main` that passes the checks is published automatically by the CI
 `CLOUDFLARE_API_TOKEN` repository secret (a Cloudflare API token with the "Cloudflare Pages: Edit"
 permission); without it the workflow still checks and builds, and says that nothing was published.
 
+The NPC tab needs two things on the Cloudflare side, both already described in `wrangler.toml`: the Workers
+AI binding, and a password stored as a secret, which is never in the repository:
+
+```bash
+npx wrangler pages secret put NPC_PASSWORD --project-name rpg-easy-map-generator
+```
+
+Without that secret the NPC tab refuses everyone. The local dev server (`npm run dev`) serves the site but
+not the function behind that tab, so NPC tokens only work on the deployed site.
+
 To publish from your own machine instead:
 
 ```bash
@@ -57,10 +71,12 @@ src/
   structures/  Model, name suggestions and roads for user-placed structures
   regions/     Names for seas, landmasses, forests, mountain ranges
   tavern/      Tavern interior generation on a battle grid
+  npc/         What an NPC portrait should show, and the password check
   project/     Save format and undo history
   render/      Canvas painting of the map and structure icons
   ui/          Sketch board, menus, sliders and the tavern screen
   main.ts      Wires the page together
+functions/     The one server-side piece: checks the password and calls the image model
 ```
 
 Coding, testing and commit conventions live in [.claude/skills](.claude/skills).

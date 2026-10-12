@@ -1,0 +1,12 @@
+# Cloudflare Pages configuration: the static site in dist/, plus the function in
+# functions/ that generates NPC portraits.
+name = "rpg-easy-map-generator"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-10-01"
+
+# Gives the function access to Workers AI as `env.AI`.
+[ai]
+binding = "AI"
+
+# The NPC tool's password is not here: it is a secret, set once with
+#   npx wrangler pages secret put NPC_PASSWORD

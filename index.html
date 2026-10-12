@@ -16,6 +16,7 @@
         <button data-screen="tavern" title="Gere o interior de uma taverna, já na grade de combate">
           Taverna
         </button>
+        <button data-screen="npc" title="Gere o retrato de um NPC como token redondo">NPC</button>
       </nav>
     </header>
 
@@ -201,6 +202,58 @@
           >
             Exportar PNG
           </button>
+        </section>
+      </aside>
+    </main>
+
+    <main class="layout" id="npc-screen" data-locked="true">
+      <aside class="panel npc-open">
+        <section>
+          <h2>Raça</h2>
+          <div class="tool-grid" id="npc-races"></div>
+        </section>
+        <section>
+          <h2>Gênero</h2>
+          <div class="tool-grid" id="npc-genders"></div>
+        </section>
+      </aside>
+
+      <div class="npc-center">
+        <form id="npc-lock" class="npc-locked">
+          <h2>Gerador de NPC</h2>
+          <p>
+            Os retratos são pintados por uma IA com cota diária limitada, por isso esta ferramenta é protegida
+            por senha.
+          </p>
+          <label for="npc-password">Senha</label>
+          <input id="npc-password" type="password" autocomplete="current-password" required />
+          <button class="primary">Entrar</button>
+        </form>
+        <div class="npc-open">
+          <canvas id="npc-token" width="512" height="512"></canvas>
+          <p id="npc-summary"></p>
+          <div id="npc-history"></div>
+        </div>
+        <p id="npc-status" class="status" role="status" aria-live="polite"></p>
+      </div>
+
+      <aside class="panel npc-open">
+        <section>
+          <h2>Token</h2>
+          <button
+            id="npc-generate"
+            class="primary"
+            title="Gera um retrato novo da raça e do gênero escolhidos"
+          >
+            Gerar token
+          </button>
+          <button id="npc-save" title="Salva o token redondo, com fundo transparente" disabled>
+            Salvar PNG
+          </button>
+          <p class="hint">Cada token gasta um pouco da cota diária gratuita da IA.</p>
+        </section>
+        <section>
+          <button id="npc-logout" title="Esquece a senha neste navegador">Sair</button>
         </section>
       </aside>
     </main>

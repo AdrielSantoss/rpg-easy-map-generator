@@ -41,6 +41,7 @@ import {
 import { suggestName } from './structures/names.ts';
 import { distanceToRoad, findRoad, markRoad, planNetwork, type RoadPath } from './structures/roads.ts';
 import { DistributionPanel } from './ui/distribution.ts';
+import { initNpcScreen } from './ui/npc-screen.ts';
 import { RegionMenu } from './ui/region-menu.ts';
 import { SketchBoard, type Tool } from './ui/sketch.ts';
 import { StructureMenu } from './ui/structure-menu.ts';
@@ -956,9 +957,10 @@ function showScreen(screen: string): void {
 }
 for (const tab of screenTabs) tab.addEventListener('click', () => showScreen(tab.dataset.screen ?? 'world'));
 initTavernScreen($('tavern-screen'));
+initNpcScreen($('npc-screen'));
 try {
   const last = params.get('screen') ?? localStorage.getItem(SCREEN_KEY);
-  if (last === 'tavern') showScreen('tavern');
+  if (last && screenTabs.some((tab) => tab.dataset.screen === last)) showScreen(last);
 } catch {
   // Storage blocked: start on the world map.
 }
