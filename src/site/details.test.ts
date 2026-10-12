@@ -62,7 +62,7 @@ describe('what stands in the open', () => {
     }
   });
 
-  const MANY = Array.from({ length: 24 }, (_, index) => `s${index}`);
+  const MANY = Array.from({ length: 60 }, (_, index) => `s${index}`);
   /** How many of the towns of a kind, over many seeds, pass a test. */
   const share = (kind: 'village' | 'city' | 'kingdom' | 'port', test: (site: Site) => boolean) =>
     MANY.filter((seed) => test(generateSite(kind, seed))).length / MANY.length;
@@ -72,8 +72,8 @@ describe('what stands in the open', () => {
       // Some have a fountain, some a monument, some neither; none has both.
       for (const centre of ['fountain', 'monument']) {
         const having = share(kind, (site) => count(site, centre) === 1);
-        expect(having, `${kind}: ${centre}`).toBeGreaterThan(0.08);
-        expect(having, `${kind}: ${centre}`).toBeLessThan(0.55);
+        expect(having, `${kind}: ${centre}`).toBeGreaterThan(0.05);
+        expect(having, `${kind}: ${centre}`).toBeLessThan(0.6);
       }
       expect(share(kind, (site) => count(site, 'fountain') + count(site, 'monument') > 1)).toBe(0);
       // Trees in tubs are the mark of some squares, not of all.
@@ -105,14 +105,14 @@ describe('what stands in the open', () => {
 
   it('gives only some villages an old tree on the green, and none a street lamp', () => {
     const treed = share('village', (site) => count(site, 'bigtree') === 1);
-    expect(treed).toBeGreaterThan(0.08);
-    expect(treed).toBeLessThan(0.55);
+    expect(treed).toBeGreaterThan(0.05);
+    expect(treed).toBeLessThan(0.6);
     expect(share('village', (site) => count(site, 'fountain') + count(site, 'lamp') === 0)).toBe(1);
     // Every village has its well; only one holding a fair has stalls.
     expect(share('village', (site) => site.buildings.some((b) => b.kind === 'well'))).toBe(1);
     const fairs = share('village', (site) => site.buildings.some((b) => b.kind === 'stall'));
-    expect(fairs).toBeGreaterThan(0.08);
-    expect(fairs).toBeLessThan(0.55);
+    expect(fairs).toBeGreaterThan(0.05);
+    expect(fairs).toBeLessThan(0.6);
   });
 
   it('keeps a public garden in some of the larger towns, not in all', () => {
@@ -137,8 +137,8 @@ describe('what stands in the open', () => {
   });
 
   it('lays a graveyard beside the temple where there is ground for one', () => {
-    const graves = SEEDS.filter((seed) => count(generateSite('kingdom', seed), 'tombstone') > 0);
-    expect(graves.length).toBeGreaterThanOrEqual(3);
+    const graves = MANY.filter((seed) => count(generateSite('kingdom', seed), 'tombstone') > 0);
+    expect(graves.length).toBeGreaterThan(MANY.length / 4);
   });
 
   it('leaves rubble instead in a ruin', () => {

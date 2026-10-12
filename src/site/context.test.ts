@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Biome } from '../generator/biome.ts';
-import { exitsOf, roadSide, SITE_SIDES, SITE_TERRAINS, terrainAt } from './context.ts';
+import { exitsOf, riverAt, roadSide, SITE_SIDES, SITE_TERRAINS, terrainAt } from './context.ts';
 import { generateSite, TILE, type Site } from './generate.ts';
 
 const W = 60;
@@ -55,6 +55,31 @@ describe('terrainAt', () => {
 
   it('works at the edge of the map', () => {
     expect(terrainAt(world(Biome.Desert), 0, 0)).toBe('desert');
+  });
+});
+
+describe('riverAt', () => {
+  /** A world with one river running north to south down a column. */
+  const withRiver = (column: number) => {
+    const riverDist = new Float32Array(W * H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) riverDist[y * W + x] = Math.abs(x - column);
+    return { w: W, h: H, riverDist };
+  };
+
+  it('finds the river a structure stands on, and the side it passes', () => {
+    expect(riverAt(withRiver(30), 30, 20)).not.toBe('none');
+    expect(riverAt(withRiver(27), 30, 20)).toBe('west');
+    expect(riverAt(withRiver(34), 30, 20)).toBe('east');
+  });
+
+  it('finds none away from any river', () => {
+    expect(riverAt(withRiver(10), 30, 20)).toBe('none');
+    expect(riverAt(withRiver(45), 30, 20)).toBe('none');
+  });
+
+  it('works at the edge of the map', () => {
+    expect(riverAt(withRiver(1), 0, 0)).not.toBe('none');
+    expect(riverAt(withRiver(30), W - 1, H - 1)).toBe('none');
   });
 });
 
@@ -133,6 +158,34 @@ describe('a place and its surroundings', () => {
     expect(other.places).toEqual(base.places);
     expect(other.buildings).toEqual(base.buildings);
     expect(other.terrain).toBe('desert');
+  });
+
+  it('has the river the surroundings say, on the side they say', () => {
+    const waterColumns = (site: Site) =>
+      Array.from({ length: site.w }, (_, x) => x).filter((x) => tile(site, x, 0) === TILE.water);
+    for (const kind of ['village', 'city', 'kingdom', 'ruins'] as const) {
+      for (const seed of ['a', 'b', 'c', 'd', 'e', 'f']) {
+        expect(waterColumns(generateSite(kind, seed, { river: 'none' }))).toEqual([]);
+        const west = generateSite(kind, seed, { river: 'west' });
+        const east = generateSite(kind, seed, { river: 'east' });
+        expect(waterColumns(west).length).toBeGreaterThan(0);
+        expect(Math.max(...waterColumns(west))).toBeLessThan(west.w / 2);
+        expect(Math.min(...waterColumns(east))).toBeGreaterThan(east.w / 2);
+        // A road that meets it crosses on a bridge.
+        expect(west.tiles.includes(TILE.bridge)).toBe(true);
+      }
+    }
+    // Even in the desert, when the world map has a river there.
+    expect(
+      waterColumns(generateSite('city', 'a', { terrain: 'desert', river: 'east' })).length,
+    ).toBeGreaterThan(0);
+    // Left to chance, some towns have one and some do not.
+    const byChance = Array.from(
+      { length: 20 },
+      (_, i) => waterColumns(generateSite('city', `r${i}`)).length > 0,
+    );
+    expect(byChance).toContain(true);
+    expect(byChance).toContain(false);
   });
 
   it('dresses the land for the terrain', () => {

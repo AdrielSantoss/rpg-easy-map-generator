@@ -579,9 +579,14 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
   }
   /** Which side of town the river runs down, if there is one. */
   let riverSide: 'left' | 'right' | null = null;
-  if (rng() < plan.river && context.terrain !== 'desert') {
+  // By chance, unless the surroundings say: a town on a river of the world
+  // map has it, on the side it passes, and a town away from any has none.
+  const riverByChance = rng() < plan.river && context.terrain !== 'desert';
+  const sideByChance = rng() < 0.5 ? 0.24 : 0.76;
+  const hasRiver = context.river === undefined ? riverByChance : context.river !== 'none' && plan.river > 0;
+  if (hasRiver) {
     // The river keeps to one side, so that the main square stays dry.
-    const side = rng() < 0.5 ? 0.24 : 0.76;
+    const side = context.river === 'west' ? 0.24 : context.river === 'east' ? 0.76 : sideByChance;
     riverSide = side < 0.5 ? 'left' : 'right';
     const width = plan.avenue + 1;
     for (let y = 0; y < h; y++) {

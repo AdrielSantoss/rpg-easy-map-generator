@@ -22,10 +22,16 @@ export type SiteTerrain = (typeof SITE_TERRAINS)[number];
 export const SITE_SIDES = ['north', 'east', 'south', 'west'] as const;
 export type SiteSide = (typeof SITE_SIDES)[number];
 
+/** Whether a river runs through the place, and down which side of it. */
+export const SITE_RIVERS = ['none', 'west', 'east'] as const;
+export type SiteRiver = (typeof SITE_RIVERS)[number];
+
 export interface SiteContext {
   terrain: SiteTerrain;
   /** The sides a road leaves by. None means the place has no way in. */
   exits: readonly SiteSide[];
+  /** Left out, the place has a river or not by chance. */
+  river?: SiteRiver;
   /** The name the place goes by; without one, a name is invented. */
   name?: string;
 }
@@ -74,6 +80,23 @@ export function terrainAt(
     }
   }
   return best;
+}
+
+/** A structure this close to a river, in cells, has the river running through it. */
+const RIVERSIDE = 6;
+
+/**
+ * Whether a structure of the world map stands on a river, and if so which
+ * side of it the river passes: the side where it comes closest.
+ */
+export function riverAt(map: Pick<MapData, 'w' | 'h' | 'riverDist'>, x: number, y: number): SiteRiver {
+  const at = (cx: number, cy: number) => {
+    const px = Math.min(map.w - 1, Math.max(0, Math.round(cx)));
+    const py = Math.min(map.h - 1, Math.max(0, Math.round(cy)));
+    return map.riverDist[py * map.w + px];
+  };
+  if (at(x, y) > RIVERSIDE) return 'none';
+  return at(x - 3, y) <= at(x + 3, y) ? 'west' : 'east';
 }
 
 /** How far along a road its direction is taken, in cells: past the bends right at the gate. */

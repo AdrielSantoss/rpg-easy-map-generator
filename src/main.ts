@@ -41,7 +41,7 @@ import {
 import { suggestName } from './structures/names.ts';
 import { distanceToRoad, findRoad, markRoad, planNetwork, type RoadPath } from './structures/roads.ts';
 import { DistributionPanel } from './ui/distribution.ts';
-import { exitsOf, terrainAt } from './site/context.ts';
+import { exitsOf, riverAt, terrainAt } from './site/context.ts';
 import { initSiteScreen } from './ui/site-screen.ts';
 import { initNpcScreen } from './ui/npc-screen.ts';
 import { RegionMenu } from './ui/region-menu.ts';
@@ -205,6 +205,7 @@ const structureMenu = new StructureMenu($('structure-menu'), {
       name: selected.name,
       seed: `${currentMap.seed}-${Math.round(selected.x)}-${Math.round(selected.y)}`,
       terrain: terrainAt(currentMap, selected.x, selected.y),
+      river: riverAt(currentMap, selected.x, selected.y),
       exits: exitsOf(
         roadsOf(selected).map((road) => road.path.cells),
         currentMap.w,

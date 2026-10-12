@@ -1,6 +1,13 @@
 import { buildingAt, interiorOf, type InteriorRequest } from '../interior/from-site.ts';
 import { renderSite, SITE_LABEL } from '../render/site.ts';
-import { SITE_SIDES, SITE_TERRAINS, type SiteSide, type SiteTerrain } from '../site/context.ts';
+import {
+  SITE_RIVERS,
+  SITE_SIDES,
+  SITE_TERRAINS,
+  type SiteRiver,
+  type SiteSide,
+  type SiteTerrain,
+} from '../site/context.ts';
 import { generateSite, type Site } from '../site/generate.ts';
 import { STRUCTURE_KINDS, type StructureKind } from '../structures/model.ts';
 import { ZoomController } from './zoom.ts';
@@ -15,6 +22,8 @@ interface Settings {
   name: string;
   terrain: SiteTerrain;
   exits: SiteSide[];
+  /** 'auto' leaves the river to chance. */
+  river: SiteRiver | 'auto';
   grid: boolean;
   labels: boolean;
   names: boolean;
@@ -28,6 +37,7 @@ export interface SiteRequest {
   name: string;
   terrain: SiteTerrain;
   exits: SiteSide[];
+  river: SiteRiver;
 }
 
 export interface SiteScreen {
@@ -71,6 +81,7 @@ function loadSettings(): Settings {
     name: '',
     terrain: 'plains',
     exits: [...SITE_SIDES],
+    river: 'auto',
     grid: true,
     labels: true,
     names: true,
@@ -90,6 +101,7 @@ function loadSettings(): Settings {
         ? (saved.terrain as SiteTerrain)
         : fresh.terrain,
       exits: Array.isArray(exits) ? SITE_SIDES.filter((side) => exits.includes(side)) : fresh.exits,
+      river: SITE_RIVERS.includes(saved.river as SiteRiver) ? (saved.river as SiteRiver) : fresh.river,
       grid: typeof saved.grid === 'boolean' ? saved.grid : fresh.grid,
       labels: typeof saved.labels === 'boolean' ? saved.labels : fresh.labels,
       names: typeof saved.names === 'boolean' ? saved.names : fresh.names,
@@ -122,6 +134,7 @@ export function initSiteScreen(
   const status = find('#site-status');
   const kindButtons = [...root.querySelectorAll<HTMLElement>('[data-site-kind]')];
   const exitButtons = [...root.querySelectorAll<HTMLElement>('[data-site-exit]')];
+  const riverButtons = [...root.querySelectorAll<HTMLElement>('[data-site-river]')];
   const toggles = ['grid', 'labels', 'names', 'legend'] as const;
   const settings = loadSettings();
   const stage = find('#site-stage');
@@ -150,6 +163,7 @@ export function initSiteScreen(
       terrain: settings.terrain,
       exits: settings.exits,
       name: settings.name,
+      river: settings.river === 'auto' ? undefined : settings.river,
     });
     shown = site;
     renderSite(canvas, site, { ...settings, cellPx: cellPx(settings.kind) * detail });
@@ -161,6 +175,9 @@ export function initSiteScreen(
     }
     for (const button of exitButtons) {
       button.classList.toggle('active', settings.exits.includes(button.dataset.siteExit as SiteSide));
+    }
+    for (const button of riverButtons) {
+      button.classList.toggle('active', button.dataset.siteRiver === settings.river);
     }
     for (const toggle of toggles) find(`#site-${toggle}`).classList.toggle('active', settings[toggle]);
     // The invented name shows greyed in the empty field, so that it can be seen and replaced.
@@ -231,6 +248,12 @@ export function initSiteScreen(
       settings.exits = SITE_SIDES.filter((other) =>
         other === side ? !open : settings.exits.includes(other),
       );
+      refresh();
+    });
+  }
+  for (const button of riverButtons) {
+    button.addEventListener('click', () => {
+      settings.river = button.dataset.siteRiver as Settings['river'];
       refresh();
     });
   }
