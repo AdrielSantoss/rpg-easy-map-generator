@@ -638,6 +638,10 @@ export function drawSprite(
   scale = 1,
 ): void {
   ctx.save();
+  // Nothing leaves its own frame: an arrow in flight would otherwise show in the next one of a sheet.
+  ctx.beginPath();
+  ctx.rect(x, y, FRAME * scale, FRAME * scale);
+  ctx.clip();
   ctx.translate(x + (FRAME / 2) * scale, y + GROUND * scale);
   ctx.scale(scale, scale);
   ctx.lineJoin = 'round';
