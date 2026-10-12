@@ -1,12 +1,24 @@
 import { passwordMatches } from '../../src/npc/auth.ts';
-import { describeNpc, NPC_GENDERS, NPC_RACES, type NpcGender, type NpcRace } from '../../src/npc/prompt.ts';
+import {
+  describeNpc,
+  NPC_AGES,
+  NPC_EXPRESSIONS,
+  NPC_GENDERS,
+  NPC_RACES,
+  NPC_WEALTHS,
+  type NpcAge,
+  type NpcExpression,
+  type NpcGender,
+  type NpcRace,
+  type NpcWealth,
+} from '../../src/npc/prompt.ts';
 
 /**
  * The only part of the site that runs on a server: it holds the password and
  * the access to the image model, so neither ever reaches the browser.
  *
  *   GET  /api/npc  -> 204 when the password is right (used to unlock the screen)
- *   POST /api/npc  -> one portrait for { race, gender, seed }
+ *   POST /api/npc  -> one portrait for { race, gender, seed, age?, expression?, wealth? }
  *
  * Both need "Authorization: Bearer <password>".
  */
@@ -54,28 +66,38 @@ export async function onRequestPost(context: Context): Promise<Response> {
   const refused = await refuse(context);
   if (refused) return refused;
 
-  let body: { race?: unknown; gender?: unknown; seed?: unknown };
+  let body: Record<string, unknown>;
   try {
     body = (await context.request.json()) as typeof body;
   } catch {
     return json({ error: 'Pedido inválido.' }, 400);
   }
-  // Only the listed races and genders are accepted: the picture is described
+  // Only values from the fixed lists are accepted: the picture is described
   // here, from fixed lists, so the tool cannot be used to draw anything else.
-  const { race, gender, seed } = body;
+  const { race, gender, seed, age, expression, wealth } = body;
+  /** Left out means "let the seed choose"; anything else must be on the list. */
+  const optional = (list: readonly string[], value: unknown) =>
+    value === undefined || (typeof value === 'string' && list.includes(value));
   const known =
     NPC_RACES.includes(race as NpcRace) &&
     NPC_GENDERS.includes(gender as NpcGender) &&
     typeof seed === 'number' &&
     Number.isInteger(seed) &&
     seed >= 0 &&
-    seed <= 0xffffffff;
+    seed <= 0xffffffff &&
+    optional(NPC_AGES, age) &&
+    optional(NPC_EXPRESSIONS, expression) &&
+    optional(NPC_WEALTHS, wealth);
   if (!known) return json({ error: 'Pedido inválido.' }, 400);
 
   // A deployment made without the binding in wrangler.toml has no model to call.
   if (!context.env.AI) return json({ error: 'A IA não está configurada neste servidor.' }, 503);
 
-  const { prompt, summary } = describeNpc(race as NpcRace, gender as NpcGender, seed as number);
+  const { prompt, summary } = describeNpc(race as NpcRace, gender as NpcGender, seed as number, {
+    age: age as NpcAge | undefined,
+    expression: expression as NpcExpression | undefined,
+    wealth: wealth as NpcWealth | undefined,
+  });
   try {
     // The model takes no seed: the seed only picks who is described, and the
     // same description is painted a little differently every time.

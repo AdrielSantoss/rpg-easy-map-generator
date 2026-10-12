@@ -1,4 +1,15 @@
-import { NPC_GENDERS, NPC_RACES, type NpcGender, type NpcRace } from '../npc/prompt.ts';
+import {
+  NPC_AGES,
+  NPC_EXPRESSIONS,
+  NPC_GENDERS,
+  NPC_RACES,
+  NPC_WEALTHS,
+  type NpcAge,
+  type NpcExpression,
+  type NpcGender,
+  type NpcRace,
+  type NpcWealth,
+} from '../npc/prompt.ts';
 import { drawToken } from '../render/token.ts';
 
 /** Where the password is kept in this browser once it has been accepted. */
@@ -20,6 +31,31 @@ const RACE_LABEL: Record<NpcRace, string> = {
   dragonborn: 'Draconato',
 };
 const GENDER_LABEL: Record<NpcGender, string> = { male: 'Masculino', female: 'Feminino' };
+
+/** Stands for "not chosen": the generator picks. */
+const ANY = 'any';
+type Any = typeof ANY;
+const AGE_LABEL: Record<NpcAge | Any, string> = {
+  any: 'Aleatória',
+  child: 'Criança',
+  adult: 'Adulto',
+  elder: 'Idoso',
+};
+const EXPRESSION_LABEL: Record<NpcExpression | Any, string> = {
+  any: 'Aleatória',
+  neutral: 'Normal',
+  happy: 'Feliz',
+  angry: 'Bravo',
+  sad: 'Triste',
+  evil: 'Maligno',
+  focused: 'Concentrado',
+};
+const WEALTH_LABEL: Record<NpcWealth | Any, string> = {
+  any: 'Aleatória',
+  peasant: 'Camponês',
+  burgher: 'Burguês',
+  noble: 'Nobre',
+};
 
 interface Token {
   image: string;
@@ -45,6 +81,9 @@ export function initNpcScreen(root: HTMLElement): void {
   let password = '';
   let race: NpcRace = 'human';
   let gender: NpcGender = 'male';
+  let age: NpcAge | Any = ANY;
+  let expression: NpcExpression | Any = ANY;
+  let wealth: NpcWealth | Any = ANY;
   let shown: Token | null = null;
   const tokens: Token[] = [];
 
@@ -91,6 +130,27 @@ export function initNpcScreen(root: HTMLElement): void {
     GENDER_LABEL,
     () => gender,
     (value) => (gender = value),
+  );
+  choice(
+    find('#npc-ages'),
+    [ANY, ...NPC_AGES],
+    AGE_LABEL,
+    () => age,
+    (value) => (age = value),
+  );
+  choice(
+    find('#npc-expressions'),
+    [ANY, ...NPC_EXPRESSIONS],
+    EXPRESSION_LABEL,
+    () => expression,
+    (value) => (expression = value),
+  );
+  choice(
+    find('#npc-wealths'),
+    [ANY, ...NPC_WEALTHS],
+    WEALTH_LABEL,
+    () => wealth,
+    (value) => (wealth = value),
   );
 
   const show = (token: Token) => {
@@ -155,7 +215,15 @@ export function initNpcScreen(root: HTMLElement): void {
       const response = await request({
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ race, gender, seed }),
+        // A trait left on "any" is not sent, and the generator picks it.
+        body: JSON.stringify({
+          race,
+          gender,
+          seed,
+          age: age === ANY ? undefined : age,
+          expression: expression === ANY ? undefined : expression,
+          wealth: wealth === ANY ? undefined : wealth,
+        }),
       });
       if (response.status === 401) {
         // The password was changed since it was saved here.
