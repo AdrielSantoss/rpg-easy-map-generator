@@ -110,7 +110,11 @@ function loadSettings(): Settings {
  * zoomed in, the map is redrawn finer so that it stays sharp. Clicking a
  * building goes to its interior.
  */
-export function initSiteScreen(root: HTMLElement, onEnter: (request: InteriorRequest) => void): SiteScreen {
+export function initSiteScreen(
+  root: HTMLElement,
+  onEnter: (request: InteriorRequest) => void,
+  onBack: () => void,
+): SiteScreen {
   const find = <T extends HTMLElement>(selector: string) => root.querySelector(selector) as T;
   const canvas = find<HTMLCanvasElement>('#site-canvas');
   const seedInput = find<HTMLInputElement>('#site-seed');
@@ -278,8 +282,12 @@ export function initSiteScreen(root: HTMLElement, onEnter: (request: InteriorReq
   nameInput.value = settings.name;
   refresh();
 
+  find('#site-back').addEventListener('click', onBack);
+
   return {
     open(request) {
+      // Opened from the world map, so there is somewhere to go back to.
+      find('#site-back-section').hidden = false;
       Object.assign(settings, request);
       seedInput.value = settings.seed;
       nameInput.value = settings.name;

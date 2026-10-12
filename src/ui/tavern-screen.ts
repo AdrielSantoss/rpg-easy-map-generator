@@ -75,9 +75,10 @@ function loadSettings(): Settings {
  * The interiors screen: the inside of a tavern, a smithy, a house and so on, on
  * the battle grid. There is nothing to draw here: picking a kind, a size or a
  * seed makes the interior at once, and every change redraws it. A building of
- * a town's map can be opened here, and then it comes as that building is.
+ * a town's map can be opened here, and then it comes as that building is, with
+ * a way back to that map.
  */
-export function initTavernScreen(root: HTMLElement): InteriorScreen {
+export function initTavernScreen(root: HTMLElement, onBack: () => void): InteriorScreen {
   const find = <T extends HTMLElement>(selector: string) => root.querySelector(selector) as T;
   const canvas = find<HTMLCanvasElement>('#tavern-canvas');
   const seedInput = find<HTMLInputElement>('#tavern-seed');
@@ -192,12 +193,16 @@ export function initTavernScreen(root: HTMLElement): InteriorScreen {
     }, 'image/png');
   });
 
+  find('#tavern-back').addEventListener('click', onBack);
+
   seedInput.value = settings.seed;
   nameInput.value = settings.name;
   refresh();
 
   return {
     open(request) {
+      // Opened from the map of a place, so there is somewhere to go back to.
+      find('#tavern-back-section').hidden = false;
       Object.assign(settings, request);
       seedInput.value = settings.seed;
       nameInput.value = settings.name;

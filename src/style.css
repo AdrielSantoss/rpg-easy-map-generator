@@ -245,6 +245,10 @@ body:not([data-screen='npc']) #npc-screen {
   border-radius: 8px;
 }
 
+.panel section[hidden] {
+  display: none;
+}
+
 h2 {
   margin: 0 0 2px;
   color: var(--muted);
