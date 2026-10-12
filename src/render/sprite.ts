@@ -33,9 +33,16 @@ function shade(color: string, amount: number): string {
   return `rgb(${channel(16)}, ${channel(8)}, ${channel(0)})`;
 }
 
+/**
+ * Set while the shapes are laid down for a pixel sprite: they are then filled
+ * flat, without the inked line, which the pixels get afterwards (see `pixelated`).
+ */
+let flat = false;
+
 const paint = (ctx: Ctx, fill: string, width = 1.2) => {
   ctx.fillStyle = fill;
   ctx.fill();
+  if (flat) return;
   ctx.lineWidth = width;
   ctx.strokeStyle = INK;
   ctx.stroke();
@@ -322,8 +329,9 @@ function headFacing(ctx: Ctx, look: SpriteLook, cy: number, r: number, back: boo
     ctx.stroke();
   }
   for (const s of [-1, 1]) {
-    oval(ctx, s * r * 0.38, eyes, 1.15, 1.8, INK, 0);
-    disc(ctx, s * r * 0.38 + 0.35, eyes - 0.6, 0.42, '#fff', 0);
+    // The white of the eye first, so that the eyes show on any skin.
+    oval(ctx, s * r * 0.38, eyes, 1.7, 2.2, '#f6f1e4', 0);
+    oval(ctx, s * r * 0.38, eyes + 0.3, 1.05, 1.6, INK, 0);
   }
   if (look.beard) {
     ctx.beginPath();
@@ -396,7 +404,8 @@ function headSide(ctx: Ctx, look: SpriteLook, cx: number, cy: number, r: number)
     } else disc(ctx, cx - r * 0.3, cy + 1.2, 1.5, shade(look.skin, -0.12), 1);
     disc(ctx, cx + r * 0.55, cy + 3.6, 1.5, 'rgba(210, 90, 80, 0.3)', 0);
   }
-  oval(ctx, cx + r * 0.5, look.snout ? cy - 1.4 : cy + 0.8, 1.1, 1.8, INK, 0);
+  oval(ctx, cx + r * 0.5, look.snout ? cy - 1.4 : cy + 0.8, 1.6, 2.2, '#f6f1e4', 0);
+  oval(ctx, cx + r * 0.5 + 0.4, look.snout ? cy - 1.1 : cy + 1.1, 1.05, 1.6, INK, 0);
   if (look.beard) {
     ctx.beginPath();
     ctx.moveTo(cx - r * 0.1, cy + r * 0.5);
@@ -654,10 +663,91 @@ export function drawSprite(
   ctx.restore();
 }
 
+/** How many times finer than a pixel the shapes are laid down before being sampled. */
+const FINE = 4;
+/** Below this a pixel counts as empty; a streak in the air or the shadow on the ground lies between. */
+const SOLID = 200;
+
+/**
+ * Turns the shapes of a frame into pixel art, FRAME pixels a side: every pixel
+ * takes the one color at its middle, each patch of color is lit from the upper
+ * left (a lighter rim there, a darker one opposite) and the whole figure gets
+ * a dark outline one pixel wide.
+ */
+function pixelated(shapes: ImageData): ImageData {
+  const size = FRAME;
+  const out = new ImageData(size, size);
+  const data = out.data;
+  // One sample per pixel, from the middle of its block.
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const from = ((y * FINE + FINE / 2) * shapes.width + x * FINE + FINE / 2) * 4;
+      data.set(shapes.data.subarray(from, from + 4), (y * size + x) * 4);
+    }
+  }
+  const flatColors = data.slice();
+  const solid = (x: number, y: number) =>
+    x >= 0 && y >= 0 && x < size && y < size && flatColors[(y * size + x) * 4 + 3] >= SOLID;
+  /** Whether the neighbour is another patch: empty, or of another color. */
+  const edge = (x: number, y: number, nx: number, ny: number) => {
+    if (!solid(nx, ny)) return true;
+    const a = (y * size + x) * 4;
+    const b = (ny * size + nx) * 4;
+    return (
+      flatColors[a] !== flatColors[b] ||
+      flatColors[a + 1] !== flatColors[b + 1] ||
+      flatColors[a + 2] !== flatColors[b + 2]
+    );
+  };
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const at = (y * size + x) * 4;
+      if (solid(x, y)) {
+        data[at + 3] = 255;
+        // Ink stays ink: the eyes, the line of a mouth.
+        if (flatColors[at] + flatColors[at + 1] + flatColors[at + 2] < 150) continue;
+        const lit = edge(x, y, x, y - 1) || edge(x, y, x - 1, y);
+        const shaded = edge(x, y, x, y + 1) || edge(x, y, x + 1, y);
+        if (lit === shaded) continue;
+        for (let c = 0; c < 3; c++) {
+          const value = flatColors[at + c];
+          data[at + c] = lit ? value + (255 - value) * 0.2 : value * 0.74;
+        }
+      } else if (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1)) {
+        // The outline, on the empty pixels that touch the figure.
+        data.set([43, 33, 24, 255], at);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * One frame of a figure as pixel art, on a canvas of FRAME pixels a side with a
+ * transparent ground. It is meant to be drawn enlarged by whole numbers, with
+ * smoothing off.
+ */
+export function spriteFrame(look: SpriteLook, pose: SpritePose, direction: SpriteFacing): HTMLCanvasElement {
+  const shapes = document.createElement('canvas');
+  shapes.width = shapes.height = FRAME * FINE;
+  const fine = shapes.getContext('2d', { willReadFrequently: true })!;
+  flat = true;
+  try {
+    drawSprite(fine, look, pose, direction, 0, 0, FINE);
+  } finally {
+    flat = false;
+  }
+  const frame = document.createElement('canvas');
+  frame.width = frame.height = FRAME;
+  frame.getContext('2d')!.putImageData(pixelated(fine.getImageData(0, 0, shapes.width, shapes.height)), 0, 0);
+  return frame;
+}
+
 /**
  * Lays every frame of every animation out on one sheet, on a transparent
  * ground: a row for each animation and facing (see `sheetCell`), a column for
- * each frame. Each frame is a square of `FRAME * scale` pixels.
+ * each frame. Each frame is a square of `FRAME * scale` pixels; `scale` should
+ * be a whole number, so that the pixels stay square.
  */
 export function drawSpriteSheet(canvas: HTMLCanvasElement, look: SpriteLook, scale: number): void {
   const size = FRAME * scale;
@@ -665,11 +755,13 @@ export function drawSpriteSheet(canvas: HTMLCanvasElement, look: SpriteLook, sca
   canvas.height = SHEET_ROWS * size;
   const ctx = canvas.getContext('2d')!;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.imageSmoothingEnabled = false;
   for (const animation of SPRITE_ANIMATIONS) {
     for (const direction of SPRITE_FACINGS) {
       for (let frame = 0; frame < SPRITE_FRAMES[animation]; frame++) {
         const [column, row] = sheetCell(animation, direction, frame);
-        drawSprite(ctx, look, spritePose(animation, frame), direction, column * size, row * size, scale);
+        const pixels = spriteFrame(look, spritePose(animation, frame), direction);
+        ctx.drawImage(pixels, column * size, row * size, size, size);
       }
     }
   }
