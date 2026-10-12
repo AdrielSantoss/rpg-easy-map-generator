@@ -9,7 +9,7 @@ import {
   type SpriteLook,
   type SpriteSubject,
 } from '../npc/sprite.ts';
-import { drawSpriteSheet, FRAME, spriteFrame } from '../render/sprite.ts';
+import { drawSprite, drawSpriteSheet } from '../render/sprite.ts';
 
 export interface SpriteView {
   /** Offers the looks of this NPC, with the one already chosen marked. */
@@ -29,13 +29,10 @@ const FACING_LABEL: Record<SpriteFacing, string> = {
   up: '↑ Para cima',
 };
 
-/**
- * How many times each pixel of a frame is enlarged: in the options, in the large
- * preview and in the saved sheet. Whole numbers, so that the pixels stay square.
- */
+/** Pixels per unit of the frame: in the options, in the large preview, and in the saved sheet. */
 const OPTION_SCALE = 2;
 const PREVIEW_SCALE = 6;
-const SHEET_SCALE = 2;
+const SHEET_SCALE = 3;
 /** The part of the frame an option shows: the figure, without the room left around it for its weapons. */
 const CROP = { x: 8, y: 8, size: 48 };
 
@@ -134,32 +131,25 @@ export function initSpriteView(
       thumb.button.classList.toggle('active', option === chosen);
   };
 
-  /** Frames already turned into pixels, by look, animation, facing and frame. */
-  const frames = new Map<string, HTMLCanvasElement>();
-  const pixels = (option: number, frame: number) => {
-    const key = `${option}:${animation}:${facing}:${frame}`;
-    let made = frames.get(key);
-    if (!made) {
-      made = spriteFrame(looks[option], spritePose(animation, frame), facing);
-      frames.set(key, made);
-    }
-    return made;
-  };
   const draw = (frame: number) => {
+    const pose = spritePose(animation, frame);
     for (const [option, thumb] of thumbs.entries()) {
       const ctx = thumb.canvas.getContext('2d')!;
       ground(ctx, thumb.canvas.width, thumb.canvas.width / 2);
       if (!looks[option]) continue;
-      ctx.imageSmoothingEnabled = false;
-      const side = thumb.canvas.width;
-      ctx.drawImage(pixels(option, frame), CROP.x, CROP.y, CROP.size, CROP.size, 0, 0, side, side);
+      drawSprite(
+        ctx,
+        looks[option],
+        pose,
+        facing,
+        -CROP.x * OPTION_SCALE,
+        -CROP.y * OPTION_SCALE,
+        OPTION_SCALE,
+      );
     }
     const ctx = preview.getContext('2d')!;
     ground(ctx, preview.width, preview.width / 4);
-    if (looks[chosen]) {
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(pixels(chosen, frame), 0, 0, FRAME * PREVIEW_SCALE, FRAME * PREVIEW_SCALE);
-    }
+    if (looks[chosen]) drawSprite(ctx, looks[chosen], pose, facing, 0, 0, PREVIEW_SCALE);
   };
   let last = -1;
   const tick = (now: number) => {
@@ -196,7 +186,6 @@ export function initSpriteView(
   return {
     show(subject, seed, option) {
       looks = spriteLooks(subject, seed);
-      frames.clear();
       chosen = option;
       last = -1;
       mark();

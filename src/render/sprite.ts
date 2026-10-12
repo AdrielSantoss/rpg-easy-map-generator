@@ -11,7 +11,7 @@ import {
   type SpritePose,
 } from '../npc/sprite.ts';
 
-/** The side of one frame, in pixels of the sprite and in the units everything here is measured in. */
+/** The side of one frame, in the units everything here is measured in. */
 export const FRAME = 64;
 
 type Ctx = CanvasRenderingContext2D;
@@ -31,28 +31,75 @@ function shade(color: string, amount: number): string {
   return `rgb(${channel(16)}, ${channel(8)}, ${channel(0)})`;
 }
 
-const disc = (ctx: Ctx, x: number, y: number, r: number, fill: string) => {
+/**
+ * Where the light comes from, as seen by the figure being drawn. On the page it
+ * is always the upper left, as on the maps; the figure is turned to face its
+ * way, so the direction is turned back by as much (see `drawSprite`).
+ */
+let lightX = -0.7;
+let lightY = -0.7;
+
+/** A color as it looks on something round: lighter toward the light, darker away from it. */
+function lit(ctx: Ctx, x: number, y: number, r: number, color: string): CanvasGradient {
+  const paint = ctx.createLinearGradient(x + lightX * r, y + lightY * r, x - lightX * r, y - lightY * r);
+  paint.addColorStop(0, shade(color, 0.3));
+  paint.addColorStop(0.45, color);
+  paint.addColorStop(1, shade(color, -0.3));
+  return paint;
+}
+
+/** Fills the current path as a lit surface and draws the inked line round it. */
+function finish(ctx: Ctx, x: number, y: number, r: number, color: string, line = 1.1): void {
+  ctx.fillStyle = lit(ctx, x, y, r, color);
+  ctx.fill();
+  if (line > 0) {
+    ctx.lineWidth = line;
+    ctx.strokeStyle = INK;
+    ctx.stroke();
+  }
+}
+
+const disc = (ctx: Ctx, x: number, y: number, r: number, color: string, line = 1.1) => {
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.fillStyle = fill;
-  ctx.fill();
+  finish(ctx, x, y, r, color, line);
 };
 
-const oval = (ctx: Ctx, x: number, y: number, rx: number, ry: number, fill: string) => {
+const oval = (ctx: Ctx, x: number, y: number, rx: number, ry: number, color: string, line = 1.1) => {
   ctx.beginPath();
   ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
-  ctx.fillStyle = fill;
-  ctx.fill();
+  finish(ctx, x, y, Math.max(rx, ry), color, line);
 };
 
+/** A limb, a blade, a tail of hair: a rounded bar with the inked line round it. */
 const bar = (ctx: Ctx, x0: number, y0: number, x1: number, y1: number, width: number, color: string) => {
   ctx.lineCap = 'round';
-  ctx.strokeStyle = color;
-  ctx.lineWidth = width;
   ctx.beginPath();
   ctx.moveTo(x0, y0);
   ctx.lineTo(x1, y1);
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = width + 1.9;
   ctx.stroke();
+  const reach = Math.hypot(x1 - x0, y1 - y0) / 2 + width;
+  ctx.strokeStyle = lit(ctx, (x0 + x1) / 2, (y0 + y1) / 2, reach, color);
+  ctx.lineWidth = width;
+  ctx.stroke();
+};
+
+/** The spot where the light catches something round and smooth. */
+const gleam = (ctx: Ctx, x: number, y: number, r: number, strength = 0.28) => {
+  ctx.beginPath();
+  ctx.ellipse(
+    x + lightX * r * 0.42,
+    y + lightY * r * 0.42,
+    r * 0.36,
+    r * 0.26,
+    Math.atan2(lightY, lightX),
+    0,
+    Math.PI * 2,
+  );
+  ctx.fillStyle = `rgba(255, 255, 255, ${strength})`;
+  ctx.fill();
 };
 
 /**
@@ -73,8 +120,8 @@ const ahead = (x: number, y: number, angle: number, distance: number): [number, 
 function head(ctx: Ctx, look: SpriteLook, cx: number, cy: number, r: number): void {
   const hairy = !look.snout && look.hairStyle !== 'bald';
   // What reaches past the face in front, and past the head behind, goes down first.
-  if (look.beard) oval(ctx, cx, cy - r * 0.98, r * 0.62, r * 0.55, look.hair);
-  if (look.snout) oval(ctx, cx, cy - r * 0.95, r * 0.5, r * 0.75, shade(look.skin, 0.14));
+  if (look.beard) oval(ctx, cx, cy - r * 0.98, r * 0.62, r * 0.58, look.hair);
+  if (look.snout) oval(ctx, cx, cy - r * 0.95, r * 0.5, r * 0.78, shade(look.skin, 0.14));
   if (!look.snout) {
     for (const s of [-1, 1]) {
       if (look.ears === 'pointed') {
@@ -83,33 +130,56 @@ function head(ctx: Ctx, look: SpriteLook, cx: number, cy: number, r: number): vo
         ctx.lineTo(cx + s * (r + 3.8), cy + 2.4);
         ctx.lineTo(cx + s * r * 0.78, cy + 2.4);
         ctx.closePath();
-        ctx.fillStyle = look.skin;
-        ctx.fill();
-      } else disc(ctx, cx + s * r * 0.98, cy + 0.2, 1.7, look.skin);
+        finish(ctx, cx + s * r, cy, 3, look.skin, 1);
+      } else disc(ctx, cx + s * r * 0.98, cy + 0.2, 1.7, look.skin, 1);
     }
   }
   if (hairy && look.hairStyle === 'long') oval(ctx, cx, cy + r * 0.8, r * 1.02, r * 1.3, look.hair);
-  if (hairy && look.hairStyle === 'ponytail') bar(ctx, cx, cy + r - 1, cx, cy + r + 6.5, 3.2, look.hair);
+  if (hairy && look.hairStyle === 'ponytail') bar(ctx, cx, cy + r - 1, cx, cy + r + 6.5, 2.6, look.hair);
 
   disc(ctx, cx, cy, r, look.skin);
   // The face: a nose, and two eyes under the brow.
-  disc(ctx, cx, cy - r + 0.3, 1.2, shade(look.skin, -0.14));
-  for (const s of [-1, 1]) disc(ctx, cx + s * r * 0.42, cy - r * 0.56, 1, INK);
-  if (look.tusks) for (const s of [-1, 1]) disc(ctx, cx + s * r * 0.34, cy - r * 0.96, 0.8, '#f2ecd8');
+  disc(ctx, cx, cy - r + 0.2, 1.1, shade(look.skin, -0.1), 0.8);
+  for (const s of [-1, 1]) {
+    ctx.beginPath();
+    ctx.arc(cx + s * r * 0.42, cy - r * 0.58, 0.85, 0, Math.PI * 2);
+    ctx.fillStyle = INK;
+    ctx.fill();
+  }
+  if (look.tusks) for (const s of [-1, 1]) disc(ctx, cx + s * r * 0.36, cy - r * 0.98, 0.8, '#f2ecd8', 0.6);
 
   if (hairy) {
-    // Hair over all of the head but the brow.
+    // Hair over all of the head but the brow, combed back from it.
     ctx.save();
     ctx.beginPath();
-    ctx.arc(cx, cy, r + 0.5, 0, Math.PI * 2);
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.clip();
     if (look.hairStyle === 'mohawk') {
-      ctx.fillStyle = look.hair;
-      ctx.fillRect(cx - 1.9, cy - r * 0.62, 3.8, r * 2);
-    } else disc(ctx, cx, cy + r * 0.44, r * 1.06, look.hair);
+      ctx.beginPath();
+      ctx.rect(cx - 1.9, cy - r * 0.62, 3.8, r * 2);
+      finish(ctx, cx, cy, r, look.hair, 1);
+    } else {
+      ctx.beginPath();
+      ctx.arc(cx, cy + r * 0.44, r * 1.06, 0, Math.PI * 2);
+      finish(ctx, cx, cy, r, look.hair, 1);
+      ctx.strokeStyle = shade(look.hair, -0.35);
+      ctx.lineWidth = 0.5;
+      for (const s of [-0.55, 0, 0.55]) {
+        ctx.beginPath();
+        ctx.moveTo(cx + s * r * 0.5, cy - r * 0.45);
+        ctx.quadraticCurveTo(cx + s * r * 1.1, cy + r * 0.2, cx + s * r * 0.8, cy + r);
+        ctx.stroke();
+      }
+    }
     ctx.restore();
-    if (look.hairStyle === 'bun') disc(ctx, cx, cy + r * 0.6, 2.9, shade(look.hair, 0.16));
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.lineWidth = 1.1;
+    ctx.strokeStyle = INK;
+    ctx.stroke();
+    if (look.hairStyle === 'bun') disc(ctx, cx, cy + r * 0.6, 2.8, shade(look.hair, 0.12));
   }
+  if (look.headgear === 'none' || look.headgear === 'circlet') gleam(ctx, cx, cy, r, hairy ? 0.2 : 0.3);
   if (look.horns) {
     for (const s of [-1, 1]) {
       ctx.beginPath();
@@ -117,8 +187,7 @@ function head(ctx: Ctx, look: SpriteLook, cx: number, cy: number, r: number): vo
       ctx.quadraticCurveTo(cx + s * r * 1.15, cy - r * 0.3, cx + s * (r + 2.6), cy - r - 2.2);
       ctx.quadraticCurveTo(cx + s * r * 0.75, cy - r * 0.95, cx + s * r * 0.5, cy - r * 0.55);
       ctx.closePath();
-      ctx.fillStyle = '#3a2a2a';
-      ctx.fill();
+      finish(ctx, cx + s * r * 0.8, cy - r * 0.6, 4, '#4a3434', 1);
     }
   }
 
@@ -127,29 +196,39 @@ function head(ctx: Ctx, look: SpriteLook, cx: number, cy: number, r: number): vo
     case 'none':
       break;
     case 'hood':
-      // Pulled over the head, open at the front.
+      // Pulled over the head, open at the front, with its fold down the middle.
       disc(ctx, cx, cy + r * 0.55, r + 0.8, color);
+      ctx.strokeStyle = shade(color, -0.35);
+      ctx.lineWidth = 0.6;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r * 0.2);
+      ctx.lineTo(cx, cy + r * 1.3);
+      ctx.stroke();
       break;
     case 'helm':
       disc(ctx, cx, cy + r * 0.3, r + 0.5, color);
-      bar(ctx, cx, cy - r * 0.4, cx, cy + r * 0.9, 1.5, shade(color, -0.22));
+      gleam(ctx, cx, cy + r * 0.3, r + 0.5, 0.45);
+      bar(ctx, cx, cy - r * 0.35, cx, cy + r * 0.85, 0.9, shade(color, -0.25));
       break;
     case 'hat':
       // A pointed hat: the brim, the cone, and its tip fallen back.
-      disc(ctx, cx, cy + 0.4, r * 1.4, shade(color, -0.14));
-      disc(ctx, cx, cy + 0.8, r * 0.88, color);
-      disc(ctx, cx + 1.2, cy + 2.6, r * 0.42, shade(color, 0.18));
+      disc(ctx, cx, cy + 0.4, r * 1.4, shade(color, -0.12));
+      disc(ctx, cx, cy + 0.8, r * 0.86, color);
+      disc(ctx, cx + 1.2, cy + 2.6, r * 0.4, shade(color, 0.12), 0.9);
       break;
     case 'cap':
       disc(ctx, cx - 0.6, cy + 0.9, r * 1.04, color);
       // A feather.
-      bar(ctx, cx + 2, cy + 0.2, cx + r + 3.4, cy + 4.6, 1.6, '#efe6d2');
+      bar(ctx, cx + 2, cy + 0.2, cx + r + 3.4, cy + 4.6, 0.9, '#efe6d2');
       break;
     case 'circlet':
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1.4;
       ctx.beginPath();
       ctx.arc(cx, cy + 0.2, r * 0.78, 0, Math.PI * 2);
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 2.2;
+      ctx.stroke();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.1;
       ctx.stroke();
       break;
   }
@@ -162,7 +241,7 @@ function head(ctx: Ctx, look: SpriteLook, cx: number, cy: number, r: number): vo
  */
 function figure(ctx: Ctx, look: SpriteLook, pose: SpritePose): void {
   const w = look.width;
-  const sleeve = look.outfit === 'fur' ? look.skin : shade(look.top, -0.1);
+  const sleeve = look.outfit === 'fur' ? look.skin : shade(look.top, -0.08);
   const stride = pose.legFront;
 
   if (look.cape) {
@@ -175,8 +254,16 @@ function figure(ctx: Ctx, look: SpriteLook, pose: SpritePose): void {
     ctx.lineTo(5 * w + sway, length);
     ctx.quadraticCurveTo(8.5 * w + sway, length * 0.6, 7 * w, 1);
     ctx.closePath();
-    ctx.fillStyle = look.cape;
-    ctx.fill();
+    finish(ctx, 0, length / 2, length * 0.7, look.cape);
+    // Its folds.
+    ctx.strokeStyle = shade(look.cape, -0.35);
+    ctx.lineWidth = 0.6;
+    for (const s of [-0.4, 0.4]) {
+      ctx.beginPath();
+      ctx.moveTo(s * 7 * w, 4);
+      ctx.lineTo(s * 6 * w + sway, length - 1.5);
+      ctx.stroke();
+    }
   }
 
   // The feet: one ahead and one behind, in turn.
@@ -184,10 +271,10 @@ function figure(ctx: Ctx, look: SpriteLook, pose: SpritePose): void {
     [-1, pose.legFront],
     [1, pose.legBack],
   ] as const) {
-    oval(ctx, s * 3.5 * w, 1 - swing * 6.5, 2.7 * w, 3.7, look.boots);
+    oval(ctx, s * 3.5 * w, 1 - swing * 6.5, 2.6 * w, 3.6, look.boots);
   }
   // A robe hangs wide all round, and hides most of the stride.
-  if (look.outfit === 'robe') oval(ctx, 0, 2.6, 8.3 * w, 7.4, shade(look.top, -0.14));
+  if (look.outfit === 'robe') oval(ctx, 0, 2.6, 8.3 * w, 7.4, shade(look.top, -0.12));
 
   // Where the hands are. Running, each arm swings against the leg on its side.
   const shoulder = { left: [-8.8 * w, 0.8], right: [8.8 * w, 0.8] } as const;
@@ -200,23 +287,34 @@ function figure(ctx: Ctx, look: SpriteLook, pose: SpritePose): void {
   const nock: [number, number] = [0.4, -3.5 - 5 * aim + pose.draw * 6.5];
   if (pose.weapon === 'sword') {
     right = ahead(shoulder.right[0], shoulder.right[1], cut, 6);
-    left = [-9 * w, 0.8];
+    left = [-9.8 * w, 0.8];
   } else if (pose.weapon === 'bow') {
     left = [-1, -5 - 5 * aim];
     if (pose.draw > 0 || pose.arrow === 0) right = [nock[0] + 1, nock[1] + 0.6];
   }
-  bar(ctx, shoulder.left[0], shoulder.left[1], left[0], left[1], 4.2 * w, sleeve);
-  bar(ctx, shoulder.right[0], shoulder.right[1], right[0], right[1], 4.2 * w, sleeve);
+  bar(ctx, shoulder.left[0], shoulder.left[1], left[0], left[1], 3.3 * w, sleeve);
+  bar(ctx, shoulder.right[0], shoulder.right[1], right[0], right[1], 3.3 * w, sleeve);
 
   // The shoulders, rising a little with each breath.
   oval(ctx, 0, 0.8, 10 * w, 5.6 + pose.bob * 0.3, look.top);
   if (look.outfit === 'armor') {
-    for (const s of [-1, 1]) disc(ctx, s * 7.2 * w, 0.8, 3.2, shade(look.top, 0.28));
+    for (const s of [-1, 1]) {
+      disc(ctx, s * 7.2 * w, 0.8, 3.1, shade(look.top, 0.2), 0.9);
+      gleam(ctx, s * 7.2 * w, 0.8, 3.1, 0.5);
+    }
   } else if (look.outfit === 'fur') {
-    for (const s of [-1, 0, 1]) disc(ctx, s * 5 * w, 3.2, 1.6, shade(look.top, -0.25));
+    for (const s of [-1, 0, 1]) disc(ctx, s * 5 * w, 3.4, 1.5, shade(look.top, -0.22), 0.7);
+  } else if (look.outfit === 'leather') {
+    // A strap across the back.
+    ctx.strokeStyle = shade(look.top, -0.4);
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(-7 * w, 3.4);
+    ctx.lineTo(6 * w, -2.6);
+    ctx.stroke();
   }
   // The collar, in the color the clothes are trimmed with.
-  oval(ctx, 0, -0.4, 5.2, 4, look.trim);
+  oval(ctx, 0, -0.4, 5.2, 4, look.trim, 0.9);
 
   if (pose.weapon === 'bow') {
     const centerY = left[1] + 8.5;
@@ -234,7 +332,7 @@ function figure(ctx: Ctx, look: SpriteLook, pose: SpritePose): void {
     const tipX = Math.cos(0.22 * Math.PI) * 10.5;
     const tipY = centerY - Math.sin(0.22 * Math.PI) * 10.5;
     ctx.strokeStyle = '#efe6d2';
-    ctx.lineWidth = 0.9;
+    ctx.lineWidth = 0.6;
     ctx.beginPath();
     ctx.moveTo(-tipX, tipY);
     ctx.lineTo(nock[0], pose.draw > 0 ? nock[1] : tipY);
@@ -243,38 +341,35 @@ function figure(ctx: Ctx, look: SpriteLook, pose: SpritePose): void {
     if (pose.arrow !== null) {
       // On the string, or already on its way.
       const tail = pose.arrow === 0 ? nock[1] : left[1] - pose.arrow;
-      bar(ctx, nock[0], tail, nock[0], tail - 10, 3, INK);
-      bar(ctx, nock[0], tail, nock[0], tail - 10, 1, '#c9ad7c');
+      bar(ctx, nock[0], tail, nock[0], tail - 10, 0.8, '#c9ad7c');
       ctx.beginPath();
-      ctx.moveTo(nock[0], tail - 13);
-      ctx.lineTo(nock[0] - 1.9, tail - 9.4);
-      ctx.lineTo(nock[0] + 1.9, tail - 9.4);
+      ctx.moveTo(nock[0], tail - 13.2);
+      ctx.lineTo(nock[0] - 1.8, tail - 9.6);
+      ctx.lineTo(nock[0] + 1.8, tail - 9.6);
       ctx.closePath();
-      ctx.fillStyle = STEEL;
-      ctx.fill();
+      finish(ctx, nock[0], tail - 11, 2, STEEL, 0.8);
     }
   }
-  disc(ctx, left[0], left[1], 2.1, look.skin);
-  disc(ctx, right[0], right[1], 2.1, look.skin);
+  disc(ctx, left[0], left[1], 1.9, look.skin, 1);
+  disc(ctx, right[0], right[1], 1.9, look.skin, 1);
 
   if (pose.weapon === 'sword') {
     const tip = ahead(right[0], right[1], cut - 0.12, 11.5);
-    bar(ctx, right[0], right[1], tip[0], tip[1], 3.4, INK);
-    bar(ctx, right[0], right[1], tip[0], tip[1], 1.9, STEEL);
+    bar(ctx, right[0], right[1], tip[0], tip[1], 1.6, STEEL);
     // The guard, across the blade.
     const guard = ahead(right[0], right[1], cut - 0.12, 2.2);
-    const a = ahead(guard[0], guard[1], cut - 0.12 + Math.PI / 2, 2.7);
-    const b = ahead(guard[0], guard[1], cut - 0.12 - Math.PI / 2, 2.7);
-    bar(ctx, a[0], a[1], b[0], b[1], 2.8, INK);
-    bar(ctx, a[0], a[1], b[0], b[1], 1.5, BRASS);
+    const a = ahead(guard[0], guard[1], cut - 0.12 + Math.PI / 2, 2.6);
+    const b = ahead(guard[0], guard[1], cut - 0.12 - Math.PI / 2, 2.6);
+    bar(ctx, a[0], a[1], b[0], b[1], 1.2, BRASS);
     if (pose.slash !== null) {
       // The streak the blade leaves, fading toward where the cut began.
       const from = 1.9;
-      for (let k = 0; k < 10; k++) {
-        const a0 = from + ((cut - from) * k) / 10;
-        const a1 = from + ((cut - from) * (k + 1)) / 10;
-        ctx.strokeStyle = `rgba(255, 255, 255, ${0.1 + (k / 10) * 0.75})`;
-        ctx.lineWidth = 1 + (k / 10) * 2.8;
+      ctx.lineCap = 'round';
+      for (let k = 0; k < 12; k++) {
+        const a0 = from + ((cut - from) * k) / 12;
+        const a1 = from + ((cut - from) * (k + 1)) / 12;
+        ctx.strokeStyle = `rgba(255, 255, 255, ${0.06 + (k / 12) * 0.7})`;
+        ctx.lineWidth = 0.8 + (k / 12) * 2.6;
         ctx.beginPath();
         ctx.moveTo(...ahead(shoulder.right[0], shoulder.right[1], a0, 16));
         ctx.lineTo(...ahead(shoulder.right[0], shoulder.right[1], a1, 16));
@@ -294,18 +389,19 @@ const TURN: Record<SpriteFacing, number> = {
 };
 
 /**
- * Lays down the flat shapes of one frame, seen from above, in the square of
- * side `FRAME * scale` whose top-left corner is at (x, y), the figure standing
- * at its middle. This is only the first step of a sprite: see `spriteFrame`.
+ * Draws one frame of a figure, seen from above, in the square of side
+ * `FRAME * scale` whose top-left corner is at (x, y), standing at its middle.
+ * It is painted the way the maps are: an inked line, colors lit from the upper
+ * left, and a soft shadow on the ground.
  */
-function drawShapes(
+export function drawSprite(
   ctx: Ctx,
   look: SpriteLook,
   pose: SpritePose,
   direction: SpriteFacing,
-  x: number,
-  y: number,
-  scale: number,
+  x = 0,
+  y = 0,
+  scale = 1,
 ): void {
   ctx.save();
   // Nothing leaves its own frame: an arrow in flight would otherwise show in the next one of a sheet.
@@ -315,96 +411,29 @@ function drawShapes(
   ctx.translate(x + (FRAME / 2) * scale, y + (FRAME / 2) * scale);
   ctx.scale(scale, scale);
   ctx.lineJoin = 'round';
-  // The shadow falls the same way whichever way the figure faces: with the maps' light, down and right.
   // The small are drawn smaller all round: from above, height shows as size.
   const size = (0.55 + 0.45 * look.height) * 1.2;
   ctx.scale(size, size);
-  oval(ctx, 1.8, 2.2, 10.5 * look.width, 8, 'rgba(0, 0, 0, 0.24)');
-  ctx.rotate(TURN[direction]);
+  // The shadow falls the same way whichever way the figure faces: with the maps' light, down and right.
+  const shadow = ctx.createRadialGradient(2.4, 2.8, 2, 2.4, 2.8, 12.5 * look.width);
+  shadow.addColorStop(0, 'rgba(0, 0, 0, 0.42)');
+  shadow.addColorStop(0.7, 'rgba(0, 0, 0, 0.2)');
+  shadow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = shadow;
+  ctx.fillRect(-20, -20, 44, 44);
+  const turn = TURN[direction];
+  ctx.rotate(turn);
+  // The light stays where it is on the page while the figure turns under it.
+  lightX = -0.7 * Math.cos(turn) - 0.7 * Math.sin(turn);
+  lightY = 0.7 * Math.sin(turn) - 0.7 * Math.cos(turn);
   figure(ctx, look, pose);
   ctx.restore();
-}
-
-/** How many times finer than a pixel the shapes are laid down before being sampled. */
-const FINE = 4;
-/** Below this a pixel counts as empty; a streak in the air or the shadow on the ground lies between. */
-const SOLID = 200;
-
-/**
- * Turns the shapes of a frame into pixel art, FRAME pixels a side: every pixel
- * takes the one color at its middle, each patch of color is lit from the upper
- * left (a lighter rim there, a darker one opposite) and the whole figure gets
- * a dark outline one pixel wide.
- */
-function pixelated(shapes: ImageData): ImageData {
-  const size = FRAME;
-  const out = new ImageData(size, size);
-  const data = out.data;
-  // One sample per pixel, from the middle of its block.
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const from = ((y * FINE + FINE / 2) * shapes.width + x * FINE + FINE / 2) * 4;
-      data.set(shapes.data.subarray(from, from + 4), (y * size + x) * 4);
-    }
-  }
-  const flatColors = data.slice();
-  const solid = (x: number, y: number) =>
-    x >= 0 && y >= 0 && x < size && y < size && flatColors[(y * size + x) * 4 + 3] >= SOLID;
-  /** Whether the neighbour is another patch: empty, or of another color. */
-  const edge = (x: number, y: number, nx: number, ny: number) => {
-    if (!solid(nx, ny)) return true;
-    const a = (y * size + x) * 4;
-    const b = (ny * size + nx) * 4;
-    return (
-      flatColors[a] !== flatColors[b] ||
-      flatColors[a + 1] !== flatColors[b + 1] ||
-      flatColors[a + 2] !== flatColors[b + 2]
-    );
-  };
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const at = (y * size + x) * 4;
-      if (solid(x, y)) {
-        data[at + 3] = 255;
-        // Ink stays ink: the eyes, the edge of a blade.
-        if (flatColors[at] + flatColors[at + 1] + flatColors[at + 2] < 150) continue;
-        const lit = edge(x, y, x, y - 1) || edge(x, y, x - 1, y);
-        const shaded = edge(x, y, x, y + 1) || edge(x, y, x + 1, y);
-        if (lit === shaded) continue;
-        for (let c = 0; c < 3; c++) {
-          const value = flatColors[at + c];
-          data[at + c] = lit ? value + (255 - value) * 0.2 : value * 0.74;
-        }
-      } else if (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1)) {
-        // The outline, on the empty pixels that touch the figure.
-        data.set([43, 33, 24, 255], at);
-      }
-    }
-  }
-  return out;
-}
-
-/**
- * One frame of a figure as pixel art seen from above, on a canvas of FRAME
- * pixels a side with a transparent ground. It is meant to be drawn enlarged by
- * whole numbers, with smoothing off.
- */
-export function spriteFrame(look: SpriteLook, pose: SpritePose, direction: SpriteFacing): HTMLCanvasElement {
-  const shapes = document.createElement('canvas');
-  shapes.width = shapes.height = FRAME * FINE;
-  const fine = shapes.getContext('2d', { willReadFrequently: true })!;
-  drawShapes(fine, look, pose, direction, 0, 0, FINE);
-  const frame = document.createElement('canvas');
-  frame.width = frame.height = FRAME;
-  frame.getContext('2d')!.putImageData(pixelated(fine.getImageData(0, 0, shapes.width, shapes.height)), 0, 0);
-  return frame;
 }
 
 /**
  * Lays every frame of every animation out on one sheet, on a transparent
  * ground: a row for each animation and facing (see `sheetCell`), a column for
- * each frame. Each frame is a square of `FRAME * scale` pixels; `scale` should
- * be a whole number, so that the pixels stay square.
+ * each frame. Each frame is a square of `FRAME * scale` pixels.
  */
 export function drawSpriteSheet(canvas: HTMLCanvasElement, look: SpriteLook, scale: number): void {
   const size = FRAME * scale;
@@ -412,13 +441,11 @@ export function drawSpriteSheet(canvas: HTMLCanvasElement, look: SpriteLook, sca
   canvas.height = SHEET_ROWS * size;
   const ctx = canvas.getContext('2d')!;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.imageSmoothingEnabled = false;
   for (const animation of SPRITE_ANIMATIONS) {
     for (const direction of SPRITE_FACINGS) {
       for (let frame = 0; frame < SPRITE_FRAMES[animation]; frame++) {
         const [column, row] = sheetCell(animation, direction, frame);
-        const pixels = spriteFrame(look, spritePose(animation, frame), direction);
-        ctx.drawImage(pixels, column * size, row * size, size, size);
+        drawSprite(ctx, look, spritePose(animation, frame), direction, column * size, row * size, scale);
       }
     }
   }
