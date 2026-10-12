@@ -615,6 +615,15 @@ function drawProp(ctx: CanvasRenderingContext2D, prop: Prop, px: number, site: S
       disc(0, 0, 0.1, '#e8f4fb', false);
       break;
     }
+    case 'monument':
+      // A figure on a round base of steps, larger than life.
+      shadow(1.15);
+      disc(0, 0, 1.15, '#a9a59d');
+      disc(0, 0, 0.82, '#bdb9b0');
+      slab(-0.4, -0.4, 0.8, 0.8, '#9a968f');
+      disc(0, 0, 0.27, '#d2cdc0');
+      disc(0, -0.03, 0.11, '#e6e1d4', false);
+      break;
     case 'statue':
       shadow(0.4);
       slab(-0.34, -0.34, 0.68, 0.68, '#a9a59d');

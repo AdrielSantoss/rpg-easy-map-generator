@@ -62,24 +62,66 @@ describe('what stands in the open', () => {
     }
   });
 
-  it('gives a paved town a fountain, benches, lamps and trees in tubs on its square', () => {
+  const MANY = Array.from({ length: 24 }, (_, index) => `s${index}`);
+  /** How many of the towns of a kind, over many seeds, pass a test. */
+  const share = (kind: 'village' | 'city' | 'kingdom' | 'port', test: (site: Site) => boolean) =>
+    MANY.filter((seed) => test(generateSite(kind, seed))).length / MANY.length;
+
+  it('builds the main square of a paved town around different things', () => {
     for (const kind of ['city', 'kingdom', 'port'] as const) {
-      for (const seed of SEEDS) {
+      // Some have a fountain, some a monument, some neither; none has both.
+      for (const centre of ['fountain', 'monument']) {
+        const having = share(kind, (site) => count(site, centre) === 1);
+        expect(having, `${kind}: ${centre}`).toBeGreaterThan(0.08);
+        expect(having, `${kind}: ${centre}`).toBeLessThan(0.55);
+      }
+      expect(share(kind, (site) => count(site, 'fountain') + count(site, 'monument') > 1)).toBe(0);
+      // Trees in tubs are the mark of some squares, not of all.
+      const planted = share(kind, (site) => count(site, 'planter') > 0);
+      expect(planted).toBeGreaterThan(0.15);
+      expect(planted).toBeLessThan(0.85);
+      // A market square is crowded, another may have no stall at all.
+      const stalls = MANY.map(
+        (seed) => generateSite(kind, seed).buildings.filter((b) => b.kind === 'stall').length,
+      );
+      expect(Math.max(...stalls)).toBeGreaterThan(3);
+      expect(Math.min(...stalls)).toBe(0);
+      // Whatever the square, a paved town lights its main streets.
+      expect(share(kind, (site) => count(site, 'lamp') > 10)).toBe(1);
+    }
+  });
+
+  it('names the square after what is on it', () => {
+    for (const seed of MANY) {
+      for (const kind of ['city', 'kingdom', 'village'] as const) {
         const site = generateSite(kind, seed);
-        expect(count(site, 'fountain')).toBe(1);
-        expect(count(site, 'bench')).toBeGreaterThanOrEqual(4);
-        expect(count(site, 'lamp')).toBeGreaterThan(10);
-        expect(count(site, 'planter')).toBeGreaterThan(2);
+        const name = site.places[kind === 'kingdom' ? 1 : 0].name;
+        expect(/Fonte|Chafariz|Águas/.test(name), name).toBe(count(site, 'fountain') === 1);
+        expect(/Heróis|Fundador|Estátua/.test(name), name).toBe(count(site, 'monument') === 1);
+        expect(/Carvalho|Figueira/.test(name), name).toBe(count(site, 'bigtree') === 1);
       }
     }
   });
 
-  it('gives a village its old tree instead, and no street lamps', () => {
-    for (const seed of SEEDS) {
-      const site = generateSite('village', seed);
-      expect(count(site, 'bigtree')).toBe(1);
-      expect(count(site, 'fountain')).toBe(0);
-      expect(count(site, 'lamp')).toBe(0);
+  it('gives only some villages an old tree on the green, and none a street lamp', () => {
+    const treed = share('village', (site) => count(site, 'bigtree') === 1);
+    expect(treed).toBeGreaterThan(0.08);
+    expect(treed).toBeLessThan(0.55);
+    expect(share('village', (site) => count(site, 'fountain') + count(site, 'lamp') === 0)).toBe(1);
+    // Every village has its well; only one holding a fair has stalls.
+    expect(share('village', (site) => site.buildings.some((b) => b.kind === 'well'))).toBe(1);
+    const fairs = share('village', (site) => site.buildings.some((b) => b.kind === 'stall'));
+    expect(fairs).toBeGreaterThan(0.08);
+    expect(fairs).toBeLessThan(0.55);
+  });
+
+  it('keeps a public garden in some of the larger towns, not in all', () => {
+    for (const kind of ['city', 'kingdom'] as const) {
+      const parks = share(kind, (site) =>
+        site.places.some((place) => /^(Jardim|Parque|Bosque)/.test(place.name)),
+      );
+      expect(parks).toBeGreaterThan(0.2);
+      expect(parks).toBeLessThan(0.8);
     }
   });
 
@@ -94,11 +136,7 @@ describe('what stands in the open', () => {
     expect(count(generateSite('city', 'a', { terrain: 'desert' }), 'flowers')).toBe(0);
   });
 
-  it('keeps a public garden in the larger towns, and a graveyard by the temple', () => {
-    const parks = SEEDS.filter((seed) =>
-      generateSite('kingdom', seed).places.some((place) => /^(Jardim|Parque|Bosque)/.test(place.name)),
-    );
-    expect(parks.length).toBeGreaterThanOrEqual(4);
+  it('lays a graveyard beside the temple where there is ground for one', () => {
     const graves = SEEDS.filter((seed) => count(generateSite('kingdom', seed), 'tombstone') > 0);
     expect(graves.length).toBeGreaterThanOrEqual(3);
   });

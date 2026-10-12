@@ -180,7 +180,8 @@ describe('the interior of a building of a town', () => {
   });
 
   it('is none for what cannot be entered', () => {
-    expect(interiorOf(town, of('stall'))).toBeNull();
+    expect(interiorOf(town, { ...of('house'), kind: 'stall' })).toBeNull();
+    expect(interiorOf(town, { ...of('house'), kind: 'well' })).toBeNull();
     expect(interiorOf(town, of('stable'))).toBeNull();
   });
 

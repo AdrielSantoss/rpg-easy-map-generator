@@ -76,6 +76,7 @@ export interface Place {
 export type PropKind =
   | 'fountain'
   | 'statue'
+  | 'monument'
   | 'bench'
   | 'lamp'
   | 'planter'
@@ -174,6 +175,23 @@ const STREETS = [
   'Rua do Corvo',
   'Caminho do Moinho',
 ];
+
+/**
+ * What a main square is built around. No two towns need have the same: the
+ * square is named after what it has, so the name and the map agree.
+ */
+type SquareKind = 'fountain' | 'monument' | 'market' | 'garden' | 'tree' | 'well' | 'fair' | 'plain';
+
+const SQUARE_NAMES: Record<SquareKind, readonly string[]> = {
+  fountain: ['Praça da Fonte', 'Largo do Chafariz', 'Praça das Águas'],
+  monument: ['Praça dos Heróis', 'Praça do Fundador', 'Largo da Estátua'],
+  market: ['Praça do Mercado', 'Largo dos Mercadores', 'Grande Mercado'],
+  garden: ['Praça das Flores', 'Largo das Tílias', 'Praça do Jardim'],
+  tree: ['Praça do Carvalho', 'Largo da Figueira'],
+  well: ['Praça do Poço', 'Largo da Cisterna'],
+  fair: ['Largo da Feira', 'Praça da Feira'],
+  plain: ['Largo da Vila', 'Praça Velha', 'Largo da Matriz'],
+};
 
 /** A notable building to find room for: how big, and what it is called. */
 interface Landmark {
@@ -635,19 +653,47 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
     );
   }
 
-  site.places.push({ name: pick(plan.squareName, rng), x: square.x + 1.2, y: square.y + 1.2 });
+  const paved = plan.stalls > 0;
+  const squareKind: SquareKind = pick(
+    paved
+      ? (['fountain', 'monument', 'market', 'garden'] as const)
+      : (['tree', 'well', 'fair', 'plain'] as const),
+    rng,
+  );
+  // A ruin keeps the names of a place nobody remembers; a port may name its square after the sea.
+  const squareNames =
+    ruin || (plan.coast && squareKind === 'market') ? plan.squareName : SQUARE_NAMES[squareKind];
+  site.places.push({ name: pick(squareNames, rng), x: square.x + 1.2, y: square.y + 1.2 });
   const center = middle(square);
-  if (plan.stalls > 0) {
-    for (let i = 0; i < plan.stalls * 3; i++) {
-      const x = between(square.x + 1, square.x + square.w - 2, rng);
-      const y = between(square.y + 1, square.y + square.h - 2, rng);
-      // The roads through the square stay open.
-      if ((x >= cx - 1 && x <= cx + avenue) || (y >= cy - 1 && y <= cy + avenue)) continue;
-      if (site.buildings.some((other) => other.x === x && other.y === y)) continue;
-      site.buildings.push(building({ x, y, w: 1, h: 1 }, 'stall', rng));
-    }
-  } else {
+  // A market square is crowded with stalls; the others keep a few, or none.
+  const stalls = Math.round(
+    plan.stalls *
+      { fountain: 0.5, monument: 0.4, market: 1.5, garden: 0, tree: 0, well: 0, fair: 0, plain: 0 }[
+        squareKind
+      ],
+  );
+  for (let i = 0; i < stalls * 3; i++) {
+    const x = between(square.x + 1, square.x + square.w - 2, rng);
+    const y = between(square.y + 1, square.y + square.h - 2, rng);
+    // The roads through the square stay open.
+    if ((x >= cx - 1 && x <= cx + avenue) || (y >= cy - 1 && y <= cy + avenue)) continue;
+    if (site.buildings.some((other) => other.x === x && other.y === y)) continue;
+    site.buildings.push(building({ x, y, w: 1, h: 1 }, 'stall', rng));
+  }
+  if (!paved) {
+    // Every village draws its water somewhere; a village with a fair sets up a few stalls.
     site.buildings.push(building({ x: square.x + 1, y: square.y + square.h - 2, w: 1, h: 1 }, 'well', rng));
+    if (squareKind === 'fair' && !ruin) {
+      for (const [dx, dy] of [
+        [1, 0],
+        [3, 0],
+        [square.w - 2, square.h - 1],
+      ]) {
+        if (square.x + dx !== cx && square.y + dy !== cy) {
+          site.buildings.push(building({ x: square.x + dx, y: square.y + dy, w: 1, h: 1 }, 'stall', rng));
+        }
+      }
+    }
   }
 
   const distance = (rect: Rect) => Math.hypot(middle(rect).x - center.x, middle(rect).y - center.y);
@@ -658,7 +704,8 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
 
   // A public garden takes one block, a little way from the square.
   const parks: Rect[] = [];
-  if (plan.park && !ruin) {
+  const gardened = rng() < 0.5;
+  if (plan.park && gardened && !ruin) {
     const garden = blocks
       .filter((block) => block.w * block.h >= 24 && onEdge(block) === 0)
       .sort((a, b) => Math.abs(distance(a) - reach * 0.4) - Math.abs(distance(b) - reach * 0.4))[0];
@@ -838,9 +885,7 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
     site.props.push({ kind, x: x + 0.5, y: y + 0.5, angle });
     return true;
   };
-  const paved = plan.stalls > 0;
-
-  // The main square: a fountain where the roads cross, and what a square has around it.
+  // The main square: what its kind calls for, and what a square has around it.
   if (ruin) {
     for (let i = 0; i < 8; i++) {
       put(
@@ -852,18 +897,22 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
   } else if (paved) {
     const fx = cx + avenue / 2;
     const fy = cy + avenue / 2;
-    site.props.push({ kind: 'fountain', x: fx, y: fy, angle: 0 });
-    for (let y = cy - 1; y <= cy + avenue; y++)
-      for (let x = cx - 1; x <= cx + avenue; x++) taken[y * w + x] = 1;
-    for (const [dx, dy, angle] of [
-      [0, -2.3, 0],
-      [0, 2.3, 0],
-      [-2.3, 0, Math.PI / 2],
-      [2.3, 0, Math.PI / 2],
-    ]) {
-      site.props.push({ kind: 'bench', x: fx + dx, y: fy + dy, angle });
+    if (squareKind === 'fountain' || squareKind === 'monument') {
+      // Something stands where the roads cross, with benches to sit and look at it.
+      site.props.push({ kind: squareKind, x: fx, y: fy, angle: 0 });
+      for (let y = cy - 1; y <= cy + avenue; y++) {
+        for (let x = cx - 1; x <= cx + avenue; x++) taken[y * w + x] = 1;
+      }
+      for (const [dx, dy, angle] of [
+        [0, -2.3, 0],
+        [0, 2.3, 0],
+        [-2.3, 0, Math.PI / 2],
+        [2.3, 0, Math.PI / 2],
+      ]) {
+        if (rng() < 0.75) site.props.push({ kind: 'bench', x: fx + dx, y: fy + dy, angle });
+      }
     }
-    put('statue', square.x + square.w - 2, square.y + 1);
+    if (squareKind !== 'monument' && rng() < 0.4) put('statue', square.x + square.w - 2, square.y + 1);
     for (const [x, y] of [
       [square.x, square.y],
       [square.x + square.w - 1, square.y],
@@ -872,17 +921,26 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
     ]) {
       put('lamp', x, y);
     }
-    // Trees in tubs along the sides, and the stallholders' crates.
-    for (let x = square.x + 2; x < square.x + square.w - 1; x += 3) {
-      if (x < cx - 1 || x > cx + avenue) {
-        put('planter', x, square.y);
-        put('planter', x, square.y + square.h - 1);
-      }
+    // Only a garden square is planted all round; some of the others have a tub or two.
+    const planted = squareKind === 'garden' ? 1 : squareKind === 'market' ? 0 : rng() < 0.4 ? 0.35 : 0;
+    for (let x = square.x + 2; x < square.x + square.w - 1; x += squareKind === 'garden' ? 2 : 3) {
+      if (x >= cx - 1 && x <= cx + avenue) continue;
+      for (const y of [square.y, square.y + square.h - 1]) if (rng() < planted) put('planter', x, y);
     }
-    for (let y = square.y + 2; y < square.y + square.h - 1; y += 3) {
-      if (y < cy - 1 || y > cy + avenue) {
-        put('planter', square.x, y);
-        put('planter', square.x + square.w - 1, y);
+    for (let y = square.y + 2; y < square.y + square.h - 1; y += squareKind === 'garden' ? 2 : 3) {
+      if (y >= cy - 1 && y <= cy + avenue) continue;
+      for (const x of [square.x, square.x + square.w - 1]) if (rng() < planted) put('planter', x, y);
+    }
+    if (squareKind === 'garden') {
+      // Flower beds and benches in the four quarters of the square.
+      for (let i = 0; i < 45; i++) {
+        const x = between(square.x + 1, square.x + square.w - 2, rng);
+        const y = between(square.y + 1, square.y + square.h - 2, rng);
+        if ((x >= cx - 1 && x <= cx + avenue) || (y >= cy - 1 && y <= cy + avenue)) continue;
+        // Where no flower grows, the beds are left out and the benches stay.
+        const bench = rng() < 0.3;
+        const dry = context.terrain === 'desert' || context.terrain === 'snow';
+        if (bench || !dry) put(bench ? 'bench' : 'flowers', x, y, rng() < 0.5 ? 0 : Math.PI / 2);
       }
     }
     for (const stall of site.buildings.filter((b) => b.kind === 'stall')) {
@@ -890,13 +948,21 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteCont
         put(rng() < 0.3 ? 'cart' : 'crates', stall.x + (rng() < 0.5 ? 1 : -1), stall.y, rng() * 3);
     }
   } else {
-    // A village green: the old tree, a bench under it, a cart by the well.
-    site.props.push({ kind: 'bigtree', x: square.x + square.w - 1.6, y: square.y + 1.6, angle: 0 });
-    taken[(square.y + 1) * w + square.x + square.w - 2] = 1;
-    put('bench', square.x + square.w - 3, square.y + 2, Math.PI / 2);
-    put('bench', square.x + square.w - 2, square.y + 3);
-    put('cart', square.x + 2, square.y + square.h - 2, 0.4);
-    put('crates', square.x + 1, square.y + 1);
+    // A village green, each with its own little.
+    if (squareKind === 'tree') {
+      site.props.push({ kind: 'bigtree', x: square.x + square.w - 1.6, y: square.y + 1.6, angle: 0 });
+      taken[(square.y + 1) * w + square.x + square.w - 2] = 1;
+      put('bench', square.x + square.w - 3, square.y + 2, Math.PI / 2);
+    } else if (squareKind === 'well') {
+      put('bench', square.x + 2, square.y + square.h - 2);
+      put('bench', square.x + 1, square.y + square.h - 3, Math.PI / 2);
+    } else if (squareKind === 'fair') {
+      put('cart', square.x + square.w - 2, square.y + 1, 0.4);
+      put('crates', square.x + 2, square.y + 1);
+      put('crates', square.x + square.w - 3, square.y + square.h - 2, 1);
+    }
+    if (rng() < 0.5) put('cart', square.x + 2, square.y + square.h - 2, 0.4);
+    if (rng() < 0.4) put('crates', square.x + 1, square.y + 1);
   }
 
   // Lamps along the two main streets of a paved town.

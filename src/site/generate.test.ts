@@ -102,11 +102,12 @@ describe('towns', () => {
     }
   });
 
-  it('give the village a well and fields instead of a market', () => {
-    const site = generateSite('village', 'a');
-    expect(site.buildings.some((b) => b.kind === 'well')).toBe(true);
-    expect(site.buildings.some((b) => b.kind === 'stall')).toBe(false);
-    for (const seed of SEEDS) expect(generateSite('village', seed).tiles.includes(TILE.field)).toBe(true);
+  it('give the village a well, and fields', () => {
+    for (const seed of SEEDS) {
+      const site = generateSite('village', seed);
+      expect(site.buildings.some((b) => b.kind === 'well')).toBe(true);
+      expect(site.tiles.includes(TILE.field)).toBe(true);
+    }
   });
 
   it('bridge the river only where there is water to cross', () => {
