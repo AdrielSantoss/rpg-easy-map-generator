@@ -41,6 +41,7 @@ import {
 import { suggestName } from './structures/names.ts';
 import { distanceToRoad, findRoad, markRoad, planNetwork, type RoadPath } from './structures/roads.ts';
 import { DistributionPanel } from './ui/distribution.ts';
+import { initSiteScreen } from './ui/site-screen.ts';
 import { initNpcScreen } from './ui/npc-screen.ts';
 import { RegionMenu } from './ui/region-menu.ts';
 import { SketchBoard, type Tool } from './ui/sketch.ts';
@@ -957,6 +958,7 @@ function showScreen(screen: string): void {
 }
 for (const tab of screenTabs) tab.addEventListener('click', () => showScreen(tab.dataset.screen ?? 'world'));
 initTavernScreen($('tavern-screen'));
+initSiteScreen($('site-screen'));
 initNpcScreen($('npc-screen'));
 try {
   const last = params.get('screen') ?? localStorage.getItem(SCREEN_KEY);

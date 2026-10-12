@@ -55,6 +55,7 @@ h1 {
 /* Only the screen of the chosen tab is shown. */
 body:not([data-screen='world']) #world-screen,
 body:not([data-screen='tavern']) #tavern-screen,
+body:not([data-screen='site']) #site-screen,
 body:not([data-screen='npc']) #npc-screen {
   display: none;
 }
@@ -175,7 +176,8 @@ body:not([data-screen='npc']) #npc-screen {
   text-align: center;
 }
 
-#tavern-canvas {
+#tavern-canvas,
+#site-canvas {
   display: block;
   max-width: calc(100vw - 2 * var(--panel-width) - 48px);
   max-height: calc(100vh - var(--header-height) - 48px);

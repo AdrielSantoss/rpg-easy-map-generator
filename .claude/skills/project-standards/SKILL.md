@@ -26,6 +26,7 @@ src/
   regions/     Pure naming of map features: seas, landmasses, forests, mountain ranges.
   project/     Pure save format: turning the user's work into text and back, validated.
   tavern/      Pure tavern interiors on a 5-foot battle grid: rooms, doors, furniture.
+  site/        Pure generator of maps of single places (town, port, tower, ruins, dungeon).
   npc/         Pure NPC descriptions (the prompt for the image model), the D&D character sheet
                (rules data in sheet-data.ts, generator in sheet.ts) and the password check.
   view/        Pure zoom and pan math for the map frame.
@@ -37,7 +38,7 @@ functions/     Cloudflare Pages Functions: the only code that runs on a server.
 ```
 
 Dependencies point one way: `main.ts` → `ui`, `render` → the pure folders (`project`, `regions`,
-`structures`, `tavern`, `npc`, `view`, `generator`). Nothing in a pure folder may touch `document`, `window` or a canvas.
+`structures`, `tavern`, `site`, `npc`, `view`, `generator`). Nothing in a pure folder may touch `document`, `window` or a canvas.
 That keeps them testable in Node, so put logic there and keep `render/`, `ui/` and `main.ts` thin.
 
 ## The server-side piece

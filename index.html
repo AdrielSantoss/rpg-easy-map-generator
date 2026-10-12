@@ -16,6 +16,9 @@
         <button data-screen="tavern" title="Gere o interior de uma taverna, já na grade de combate">
           Taverna
         </button>
+        <button data-screen="site" title="Gere o mapa de uma vila, cidade, porto, torre, ruína ou masmorra">
+          Locais
+        </button>
         <button data-screen="npc" title="Gere o retrato de um NPC como token redondo">NPC</button>
       </nav>
     </header>
@@ -200,6 +203,61 @@
             id="tavern-export"
             title="Salva a imagem a 70 pixels por quadrado, pronta para mesas virtuais"
           >
+            Exportar PNG
+          </button>
+        </section>
+      </aside>
+    </main>
+
+    <main class="layout" id="site-screen">
+      <aside class="panel">
+        <section>
+          <h2 title="Os mesmos tipos de estrutura que são colocados no mapa do mundo">Tipo de local</h2>
+          <div class="tool-grid">
+            <button data-site-kind="kingdom" title="A capital murada de um reino, com o castelo">
+              Reino
+            </button>
+            <button data-site-kind="city" title="Uma cidade murada, com praça de mercado">Cidade</button>
+            <button data-site-kind="village" title="Uma vila aberta entre plantações">Vila</button>
+            <button data-site-kind="tower" title="Uma torre isolada na floresta, com seu pátio murado">
+              Torre
+            </button>
+            <button data-site-kind="port" title="Uma cidade à beira-mar, com cais, armazéns e farol">
+              Porto
+            </button>
+            <button data-site-kind="ruins" title="O que sobrou de uma cidade abandonada">Ruínas</button>
+            <button
+              data-site-kind="dungeon"
+              title="Salas e corredores escavados na rocha, na grade de combate"
+            >
+              Masmorra
+            </button>
+          </div>
+        </section>
+        <section>
+          <h2>Exibir</h2>
+          <button id="site-grid" title="A grade de quadrados sobre o mapa">Grade</button>
+          <button id="site-labels" title="Os números dos lugares e os nomes das ruas">Nomes e números</button>
+          <button id="site-legend" title="A lista dos lugares numerados, ao lado do mapa">Legenda</button>
+        </section>
+      </aside>
+
+      <div class="tavern-center">
+        <canvas id="site-canvas"></canvas>
+        <p id="site-status" class="status" role="status" aria-live="polite"></p>
+      </div>
+
+      <aside class="panel">
+        <section>
+          <h2>Mapa</h2>
+          <label for="site-seed">Seed</label>
+          <input id="site-seed" type="text" spellcheck="false" autocomplete="off" />
+          <button id="site-reroll" class="primary" title="Sorteia outro local do mesmo tipo">
+            Novo mapa
+          </button>
+        </section>
+        <section>
+          <button id="site-export" title="Salva a imagem do mapa, com a legenda se estiver à mostra">
             Exportar PNG
           </button>
         </section>

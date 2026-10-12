@@ -12,7 +12,11 @@ A second tab generates **tavern interiors** as battle maps on the 5-foot D&D gri
 common room with a bar, fireplace and tables, a kitchen, a storeroom and, in the larger sizes, guest rooms,
 stairs and a stage. The picture exports at 70 pixels per square, ready for a virtual tabletop.
 
-A third tab makes **NPC tokens**: pick a race and a gender and get a painted portrait, cropped into a round
+Another tab maps a single **place** of any of the kinds placed on the world map: a village, a city, the
+capital of a kingdom, a port, a lone tower, ruins or a dungeon. Streets, squares, walls and houses are laid
+out on a square grid by an algorithm, and the notable places are numbered and named in a legend.
+
+A fourth tab makes **NPC tokens**: pick a race and a gender and get a painted portrait, cropped into a round
 token with a transparent background. The portraits are painted by an image model on Cloudflare Workers AI,
 which has a limited free daily allowance, so this tab is locked behind a password.
 
@@ -77,6 +81,7 @@ src/
   regions/     Names for seas, landmasses, forests, mountain ranges
   tavern/      Tavern interior generation on a battle grid
   npc/         What an NPC portrait should show, its character sheet, and the password check
+  site/        Maps of single places: towns, ports, towers, ruins, dungeons
   project/     Save format and undo history
   render/      Canvas painting of the map and structure icons
   ui/          Sketch board, menus, sliders and the tavern screen
