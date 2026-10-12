@@ -155,7 +155,7 @@ describe('ruins', () => {
 describe('the tower', () => {
   it('stands in a walled yard in the woods, reached by a track', () => {
     for (const seed of SEEDS) {
-      const site = generateSite('tower', seed);
+      const site = generateSite('tower', seed, { terrain: 'forest', exits: ['south'] });
       expect(site.buildings.filter((b) => b.kind === 'tower')).toHaveLength(1);
       expect(site.walls).toHaveLength(1);
       expect(site.walls[0].gates).toHaveLength(1);

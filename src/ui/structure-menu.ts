@@ -11,6 +11,8 @@ const KIND_LABEL: Record<StructureKind, string> = {
 };
 
 export interface StructureMenuActions {
+  /** The user wants to see the map of the place this structure is. */
+  onView: () => void;
   /** The user wants to link this structure to another by road. */
   onRoad: () => void;
   /** The user wants every road of this structure gone, leaving it isolated. */
@@ -21,7 +23,7 @@ export interface StructureMenuActions {
 }
 
 /**
- * The small menu shown next to a selected structure: build a road from it,
+ * The small menu shown next to a selected structure: open its own map, build a road from it,
  * cut all its roads, rename it, change what it is, or remove it. Renaming and changing type open
  * a second step inside the same menu.
  */
@@ -75,6 +77,7 @@ export class StructureMenu {
     unlink.disabled = this.roadCount === 0;
     this.root.replaceChildren(
       this.title(this.name),
+      this.button('Visualizar região', () => this.actions.onView(), 'primary'),
       this.button('Estrada até…', () => this.actions.onRoad()),
       unlink,
       this.button('Renomear', () => this.showRename()),

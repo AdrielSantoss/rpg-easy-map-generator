@@ -15,6 +15,8 @@ stairs and a stage. The picture exports at 70 pixels per square, ready for a vir
 Another tab maps a single **place** of any of the kinds placed on the world map: a village, a city, the
 capital of a kingdom, a port, a lone tower, ruins or a dungeon. Streets, squares, walls and houses are laid
 out on a square grid by an algorithm, and the notable places are numbered and named in a legend.
+A structure on the world map opens straight on its own map ("Visualizar região"), which then takes after
+where it stands: the ground is the biome around it, and roads leave only by the sides its roads do.
 
 A fourth tab makes **NPC tokens**: pick a race and a gender and get a painted portrait, cropped into a round
 token with a transparent background. The portraits are painted by an image model on Cloudflare Workers AI,

@@ -1,4 +1,5 @@
 import { TILE, type Building, type BuildingKind, type Site, type Wall } from '../site/generate.ts';
+import type { SiteTerrain } from '../site/context.ts';
 import type { StructureKind } from '../structures/model.ts';
 
 export interface SiteView {
@@ -35,6 +36,77 @@ const hash = (x: number, y: number, salt = 0): number => {
   return value - Math.floor(value);
 };
 
+/** How each terrain looks: its open ground, what is scattered on it, its water, its dirt roads and its trees. */
+const LAND: Record<
+  SiteTerrain,
+  { ground: string; speck: string; water: string; road: string; tree: string; crown: string }
+> = {
+  plains: {
+    ground: '#8fa25c',
+    speck: 'rgba(60, 90, 40, 0.35)',
+    water: '#5d8fb0',
+    road: '#c8b184',
+    tree: '#44703a',
+    crown: 'rgba(150, 190, 100, 0.45)',
+  },
+  forest: {
+    ground: '#7a9652',
+    speck: 'rgba(45, 75, 35, 0.4)',
+    water: '#5d8fb0',
+    road: '#bfa87c',
+    tree: '#3c6a35',
+    crown: 'rgba(140, 185, 95, 0.45)',
+  },
+  taiga: {
+    ground: '#7f9274',
+    speck: 'rgba(45, 70, 55, 0.4)',
+    water: '#5b88a8',
+    road: '#b9a887',
+    tree: '#2c5a45',
+    crown: 'rgba(120, 165, 140, 0.4)',
+  },
+  desert: {
+    ground: '#dcc88d',
+    speck: 'rgba(150, 120, 60, 0.4)',
+    water: '#5fa3b5',
+    road: '#b99866',
+    tree: '#7f8c46',
+    crown: 'rgba(190, 200, 120, 0.45)',
+  },
+  swamp: {
+    ground: '#6f7d50',
+    speck: 'rgba(40, 55, 30, 0.45)',
+    water: '#55705f',
+    road: '#a8946c',
+    tree: '#4a6238',
+    crown: 'rgba(130, 150, 90, 0.4)',
+  },
+  hills: {
+    ground: '#9aa166',
+    speck: 'rgba(85, 90, 50, 0.4)',
+    water: '#5d8fb0',
+    road: '#c2ab80',
+    tree: '#4a7040',
+    crown: 'rgba(150, 190, 100, 0.45)',
+  },
+  mountain: {
+    ground: '#a39c8e',
+    speck: 'rgba(70, 66, 60, 0.4)',
+    water: '#5a86a6',
+    road: '#bba88a',
+    tree: '#3d6048',
+    crown: 'rgba(130, 170, 130, 0.4)',
+  },
+  snow: {
+    ground: '#e6ecef',
+    speck: 'rgba(150, 175, 195, 0.5)',
+    water: '#9cc2d6',
+    road: '#b9ab94',
+    tree: '#35604c',
+    crown: 'rgba(255, 255, 255, 0.85)',
+  },
+};
+
 /** Roof colors by kind; houses pick among theirs by tone. */
 const ROOF: Partial<Record<BuildingKind, readonly string[]>> = {
   house: ['#a8553a', '#9c6b3f', '#8a5a44', '#b06a45', '#7c6f66'],
@@ -67,11 +139,12 @@ function shade(color: string, amount: number): string {
 function ground(ctx: CanvasRenderingContext2D, site: Site, px: number): void {
   const { w, h, tiles } = site;
   const paved = site.kind === 'city' || site.kind === 'kingdom' || site.kind === 'port';
+  const land = LAND[site.terrain];
   const at = (x: number, y: number) => (x < 0 || y < 0 || x >= w || y >= h ? -1 : tiles[y * w + x]);
   const base: Record<number, string> = {
-    [TILE.grass]: '#8fa25c',
-    [TILE.road]: paved ? '#bdb4a2' : '#c8b184',
-    [TILE.water]: '#5d8fb0',
+    [TILE.grass]: land.ground,
+    [TILE.road]: paved ? '#bdb4a2' : land.road,
+    [TILE.water]: site.kind === 'dungeon' ? '#5d8fb0' : land.water,
     [TILE.plaza]: '#cbc2b0',
     [TILE.field]: '#b9a653',
     [TILE.bridge]: '#8f6f48',
@@ -89,7 +162,7 @@ function ground(ctx: CanvasRenderingContext2D, site: Site, px: number): void {
       const left = x * px;
       const top = y * px;
       if (tile === TILE.grass) {
-        ctx.fillStyle = 'rgba(60, 90, 40, 0.35)';
+        ctx.fillStyle = land.speck;
         for (let i = 0; i < 3; i++) {
           ctx.fillRect(left + hash(x, y, i + 1) * px, top + hash(x, y, i + 5) * px, px * 0.06, px * 0.14);
         }
@@ -480,16 +553,39 @@ function drawTrees(ctx: CanvasRenderingContext2D, site: Site, px: number): void 
   }
   for (const tree of site.trees) {
     const tone = hash(Math.floor(tree.x), Math.floor(tree.y), 7);
-    ctx.fillStyle = shade('#44703a', (tone - 0.5) * 0.3);
+    ctx.fillStyle = shade(LAND[site.terrain].tree, (tone - 0.5) * 0.3);
     ctx.strokeStyle = 'rgba(25, 45, 20, 0.9)';
     ctx.lineWidth = px * 0.06;
     ctx.beginPath();
     ctx.arc(tree.x * px, tree.y * px, tree.r * px, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = 'rgba(150, 190, 100, 0.45)';
+    ctx.fillStyle = LAND[site.terrain].crown;
     ctx.beginPath();
     ctx.arc((tree.x - tree.r * 0.25) * px, (tree.y - tree.r * 0.25) * px, tree.r * px * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawRocks(ctx: CanvasRenderingContext2D, site: Site, px: number): void {
+  for (const rock of site.rocks) {
+    const x = rock.x * px;
+    const y = rock.y * px;
+    const r = rock.r * px;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.beginPath();
+    ctx.ellipse(x + r * 0.3, y + r * 0.3, r, r * 0.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = shade('#8f8b84', (hash(Math.floor(rock.x), Math.floor(rock.y), 3) - 0.5) * 0.3);
+    ctx.strokeStyle = 'rgba(40, 36, 32, 0.9)';
+    ctx.lineWidth = px * 0.06;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, r * 0.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.beginPath();
+    ctx.ellipse(x - r * 0.25, y - r * 0.25, r * 0.45, r * 0.3, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 }
@@ -772,6 +868,7 @@ export function renderSite(canvas: HTMLCanvasElement, site: Site, view: SiteView
   drawBoats(ctx, site, px);
   for (const b of site.buildings) drawBuilding(ctx, b, px, false);
   for (const wall of site.walls) drawWall(ctx, wall, px);
+  drawRocks(ctx, site, px);
   drawTrees(ctx, site, px);
   drawDoors(ctx, site, px);
   if (view.labels) drawLabels(ctx, site, px, view.names);

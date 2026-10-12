@@ -235,6 +235,23 @@
           </div>
         </section>
         <section>
+          <h2 title="O chão em que o local está: no mapa do mundo, é o bioma em volta da estrutura">
+            Terreno
+          </h2>
+          <div class="tool-grid" id="site-terrains"></div>
+        </section>
+        <section>
+          <h2 title="Por quais lados uma estrada chega: no mapa do mundo, são as ligações da estrutura">
+            Acessos
+          </h2>
+          <div class="compass">
+            <button data-site-exit="north" title="Estrada saindo pelo norte">N</button>
+            <button data-site-exit="west" title="Estrada saindo pelo oeste">O</button>
+            <button data-site-exit="east" title="Estrada saindo pelo leste">L</button>
+            <button data-site-exit="south" title="Estrada saindo pelo sul">S</button>
+          </div>
+        </section>
+        <section>
           <h2>Exibir</h2>
           <button id="site-grid" title="A grade de quadrados sobre o mapa">Grade</button>
           <button id="site-labels" title="Marca os lugares notáveis e escreve os nomes das ruas">
@@ -255,6 +272,8 @@
       <aside class="panel">
         <section>
           <h2>Mapa</h2>
+          <label for="site-name">Nome</label>
+          <input id="site-name" type="text" spellcheck="false" autocomplete="off" maxlength="80" />
           <label for="site-seed">Seed</label>
           <input id="site-seed" type="text" spellcheck="false" autocomplete="off" />
           <button id="site-reroll" class="primary" title="Sorteia outro local do mesmo tipo">

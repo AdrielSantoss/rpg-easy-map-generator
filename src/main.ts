@@ -41,6 +41,7 @@ import {
 import { suggestName } from './structures/names.ts';
 import { distanceToRoad, findRoad, markRoad, planNetwork, type RoadPath } from './structures/roads.ts';
 import { DistributionPanel } from './ui/distribution.ts';
+import { exitsOf, terrainAt } from './site/context.ts';
 import { initSiteScreen } from './ui/site-screen.ts';
 import { initNpcScreen } from './ui/npc-screen.ts';
 import { RegionMenu } from './ui/region-menu.ts';
@@ -195,6 +196,24 @@ const zoom = new ZoomController($('stage'), $('viewport'), {
 zoomReset.addEventListener('click', () => zoom.reset());
 
 const structureMenu = new StructureMenu($('structure-menu'), {
+  onView: () => {
+    if (!selected || !currentMap) return;
+    // The place takes after where it stands: the land around it, and the sides its roads leave by.
+    // Its map is always the same for the same structure on the same world.
+    siteScreen.open({
+      kind: selected.kind,
+      name: selected.name,
+      seed: `${currentMap.seed}-${Math.round(selected.x)}-${Math.round(selected.y)}`,
+      terrain: terrainAt(currentMap, selected.x, selected.y),
+      exits: exitsOf(
+        roadsOf(selected).map((road) => road.path.cells),
+        currentMap.w,
+        selected.x,
+        selected.y,
+      ),
+    });
+    showScreen('site');
+  },
   onRoad: () => {
     linkingFrom = selected;
     structureMenu.close();
@@ -958,7 +977,7 @@ function showScreen(screen: string): void {
 }
 for (const tab of screenTabs) tab.addEventListener('click', () => showScreen(tab.dataset.screen ?? 'world'));
 initTavernScreen($('tavern-screen'));
-initSiteScreen($('site-screen'));
+const siteScreen = initSiteScreen($('site-screen'));
 initNpcScreen($('npc-screen'));
 try {
   const last = params.get('screen') ?? localStorage.getItem(SCREEN_KEY);

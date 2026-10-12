@@ -431,6 +431,33 @@ input.slider:focus-visible {
   grid-column: 1 / -1;
 }
 
+/* The four sides a road can leave by, laid out as on a compass. */
+.compass {
+  display: grid;
+  grid-template: 'a north b' 'west c east' 'd south e' / 1fr 1fr 1fr;
+  gap: 4px;
+}
+
+.compass button {
+  padding: 4px 0;
+}
+
+.compass [data-site-exit='north'] {
+  grid-area: north;
+}
+
+.compass [data-site-exit='west'] {
+  grid-area: west;
+}
+
+.compass [data-site-exit='east'] {
+  grid-area: east;
+}
+
+.compass [data-site-exit='south'] {
+  grid-area: south;
+}
+
 .panel .pair {
   display: flex;
   gap: 5px;

@@ -3,6 +3,7 @@ import { seededRng, type Rng } from '../generator/rng.ts';
 import type { StructureKind } from '../structures/model.ts';
 import { fantasyName, suggestName } from '../structures/names.ts';
 import { tavernName } from '../tavern/names.ts';
+import { SITE_SIDES, type SiteContext, type SiteSide, type SiteTerrain } from './context.ts';
 
 /**
  * Maps of the places that are only an icon on the world map: a village, a
@@ -106,7 +107,10 @@ export interface Site {
   walls: Wall[];
   places: Place[];
   streets: Street[];
+  /** The ground the place stands on, which colors everything that is not built. */
+  terrain: SiteTerrain;
   trees: { x: number; y: number; r: number }[];
+  rocks: { x: number; y: number; r: number }[];
   boats: { x: number; y: number; vertical: boolean }[];
   /** Doors of a dungeon: the cell, and whether the door stands across a north-south passage. */
   doors: { x: number; y: number; vertical: boolean }[];
@@ -331,6 +335,34 @@ const TOWN: Record<'village' | 'city' | 'kingdom' | 'port' | 'ruins', TownPlan> 
   },
 };
 
+/** The name given from outside, or else the one invented (which is always drawn, to keep the map the same). */
+const named = (invented: string, context: SiteContext) => context.name?.trim() || invented;
+
+/** How wooded each terrain is, against ordinary countryside. */
+const WOODS: Record<SiteTerrain, number> = {
+  plains: 0.6,
+  forest: 1.3,
+  taiga: 1.1,
+  desert: 0.07,
+  swamp: 0.8,
+  hills: 0.5,
+  mountain: 0.3,
+  snow: 0.5,
+};
+/** How likely a boulder lies on a square of open ground. */
+const ROCKS: Record<SiteTerrain, number> = {
+  plains: 0,
+  forest: 0,
+  taiga: 0.01,
+  desert: 0.025,
+  swamp: 0,
+  hills: 0.05,
+  mountain: 0.13,
+  snow: 0.015,
+};
+/** Where nothing is farmed, and where no river runs. */
+const BARREN: readonly SiteTerrain[] = ['desert', 'swamp', 'mountain', 'snow'];
+
 /** Marks, among the cells in use, those a wall stands on. */
 const WALLED = 2;
 
@@ -455,7 +487,7 @@ function blocksOf(ground: Ground, rect: Rect, max: readonly [number, number], rn
   }
 }
 
-function town(kind: keyof typeof TOWN, seed: string, rng: Rng): Site {
+function town(kind: keyof typeof TOWN, seed: string, rng: Rng, context: SiteContext): Site {
   const plan = TOWN[kind];
   const { w, h } = plan;
   const ground = new Ground(w, h, TILE.grass);
@@ -463,7 +495,7 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng): Site {
   const site: Site = {
     kind,
     seed,
-    name: suggestName(kind, rng),
+    name: named(suggestName(kind, rng), context),
     w,
     h,
     cellMeters: 3,
@@ -472,7 +504,9 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng): Site {
     walls: [],
     places: [],
     streets: [],
+    terrain: context.terrain,
     trees: [],
+    rocks: [],
     boats: [],
     doors: [],
   };
@@ -494,7 +528,7 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng): Site {
       }
     }
   }
-  if (rng() < plan.river) {
+  if (rng() < plan.river && context.terrain !== 'desert') {
     // The river keeps to one side, so that the main square stays dry.
     const side = rng() < 0.5 ? 0.24 : 0.76;
     const width = plan.avenue + 1;
@@ -511,8 +545,12 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng): Site {
   const castle: Rect | null = plan.castle ? { x: cx - 9, y: core.y + 1, w: 18 + avenue, h: 13 } : null;
   const avenueTop = castle ? castle.y + castle.h + 1 : 0;
   for (let d = 0; d < avenue; d++) {
-    for (let x = 0; x < w; x++) ground.road(x, cy + d);
-    for (let y = avenueTop; y < (plan.coast ? coreBottom : h); y++) ground.road(cx + d, y);
+    const west = context.exits.includes('west') ? 0 : core.x;
+    const east = context.exits.includes('east') ? w : coreRight;
+    for (let x = west; x < east; x++) ground.road(x, cy + d);
+    const north = castle ? avenueTop : context.exits.includes('north') ? 0 : core.y;
+    const south = plan.coast || !context.exits.includes('south') ? coreBottom : h;
+    for (let y = north; y < south; y++) ground.road(cx + d, y);
   }
   const square: Rect = {
     x: cx - plan.square[0],
@@ -529,6 +567,8 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng): Site {
   };
   if (castle) {
     const left = castle.x - 1;
+    // The castle bars the way north, so the road from there comes in beside it.
+    if (context.exits.includes('north')) for (let y = 0; y < core.y; y++) ground.road(left, y);
     const right = castle.x + castle.w;
     const under = castle.y + castle.h;
     for (let y = core.y; y <= under; y++) {
@@ -649,7 +689,7 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng): Site {
 
   if (plan.wall) site.walls.push(wallAround(ground, core, rng, ruin ? 0.3 : 0));
 
-  if (plan.fields) {
+  if (plan.fields && !BARREN.includes(context.terrain)) {
     // Farmland around the village, with a farmhouse here and there.
     for (let i = 0; i < 40; i++) {
       const field: Rect = {
@@ -678,7 +718,10 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng): Site {
     // Time took part of everything: houses, and stretches of the streets.
     site.buildings = site.buildings.filter((b) => b.kind !== 'house' || rng() < 0.7);
     for (let i = 0; i < ground.tiles.length; i++) {
-      if (ground.tiles[i] === TILE.road && rng() < 0.22) ground.tiles[i] = TILE.grass;
+      // Where a road meets the edge of the map it stays, to show that it goes on.
+      const x = i % w;
+      const edge = x === 0 || x === w - 1 || i < w || i >= w * (h - 1);
+      if (ground.tiles[i] === TILE.road && rng() < 0.22 && !edge) ground.tiles[i] = TILE.grass;
     }
   }
 
@@ -691,9 +734,10 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng): Site {
     for (let x = 0; x < w; x++) {
       if (ground.tiles[y * w + x] !== TILE.grass || built[y * w + x]) continue;
       const inCore = x >= core.x - 1 && x <= coreRight && y >= core.y - 1 && y <= coreBottom;
-      const wooded = fbm(noise, x * 0.05 + 40, y * 0.05, 3) > 0.05;
-      const chance = inCore ? (ruin ? 0.3 : 0.07) : wooded ? 0.55 : 0.04;
       if (ground.used[y * w + x] === WALLED) continue;
+      if (!inCore && !ground.used[y * w + x] && wild(site, ground, noise, rng, x, y)) continue;
+      const wooded = fbm(noise, x * 0.05 + 40, y * 0.05, 3) > 0.05;
+      const chance = (inCore ? (ruin ? 0.3 : 0.07) : wooded ? 0.55 : 0.04) * WOODS[context.terrain];
       if (rng() < chance)
         site.trees.push({ x: x + 0.2 + rng() * 0.6, y: y + 0.2 + rng() * 0.6, r: 0.45 + rng() * 0.4 });
     }
@@ -714,6 +758,29 @@ function town(kind: keyof typeof TOWN, seed: string, rng: Rng): Site {
     vertical: true,
   });
   return site;
+}
+
+/**
+ * What the wild ground of some terrains has instead of a tree: a pool in the
+ * swamp, a boulder among the hills. Returns whether the square was taken.
+ */
+function wild(
+  site: Site,
+  ground: Ground,
+  noise: (x: number, y: number) => number,
+  rng: Rng,
+  x: number,
+  y: number,
+): boolean {
+  if (site.terrain === 'swamp' && fbm(noise, x * 0.13 + 90, y * 0.13, 2) > 0.28) {
+    ground.tiles[y * ground.w + x] = TILE.water;
+    return true;
+  }
+  if (rng() < ROCKS[site.terrain]) {
+    site.rocks.push({ x: x + 0.3 + rng() * 0.4, y: y + 0.3 + rng() * 0.4, r: 0.3 + rng() * 0.35 });
+    return true;
+  }
+  return false;
 }
 
 /** What makes a town a port: warehouses on the quay, piers with boats, a lighthouse. */
@@ -766,7 +833,7 @@ function harbor(site: Site, ground: Ground, core: Rect, shore: (x: number) => nu
 }
 
 /** A wizard's or a lord's tower: a walled yard in the woods, at the end of a track. */
-function tower(seed: string, rng: Rng): Site {
+function tower(seed: string, rng: Rng, context: SiteContext): Site {
   const w = 40;
   const h = 32;
   const ground = new Ground(w, h, TILE.grass);
@@ -774,7 +841,7 @@ function tower(seed: string, rng: Rng): Site {
   const site: Site = {
     kind: 'tower',
     seed,
-    name: suggestName('tower', rng),
+    name: named(suggestName('tower', rng), context),
     w,
     h,
     cellMeters: 3,
@@ -783,20 +850,36 @@ function tower(seed: string, rng: Rng): Site {
     walls: [],
     places: [],
     streets: [],
+    terrain: context.terrain,
     trees: [],
+    rocks: [],
     boats: [],
     doors: [],
   };
   const yard: Rect = { x: 13 + between(-2, 2, rng), y: 8 + between(-1, 1, rng), w: 14, h: 12 };
   ground.fill(yard, TILE.yard);
-  // The track comes up from the south, wandering a little, to the gate.
-  const gateX = yard.x + Math.floor(yard.w / 2);
-  let x = gateX;
-  for (let y = yard.y + yard.h - 1; y < h; y++) {
-    ground.road(x, y);
-    if (y > yard.y + yard.h + 1 && rng() < 0.3) {
-      x += rng() < 0.5 ? 1 : -1;
+  // A track leaves by the middle of every side a road arrives by, wandering a little.
+  const midX = yard.x + Math.floor(yard.w / 2);
+  const midY = yard.y + Math.floor(yard.h / 2);
+  const gates: Record<SiteSide, readonly [number, number, number, number]> = {
+    north: [midX, yard.y, 0, -1],
+    east: [yard.x + yard.w - 1, midY, 1, 0],
+    south: [midX, yard.y + yard.h - 1, 0, 1],
+    west: [yard.x, midY, -1, 0],
+  };
+  for (const side of SITE_SIDES.filter((s) => context.exits.includes(s))) {
+    let [x, y] = gates[side];
+    const [, , dx, dy] = gates[side];
+    for (let step = 0; ground.inside(x, y); step++) {
       ground.road(x, y);
+      if (step > 2 && rng() < 0.3) {
+        const turn = rng() < 0.5 ? 1 : -1;
+        if (dx === 0) x += turn;
+        else y += turn;
+        ground.road(x, y);
+      }
+      x += dx;
+      y += dy;
     }
   }
   if (rng() < 0.6) {
@@ -831,9 +914,10 @@ function tower(seed: string, rng: Rng): Site {
   for (let y = 0; y < h; y++) {
     for (let cellX = 0; cellX < w; cellX++) {
       if (ground.used[y * w + cellX]) continue;
-      // Thick woods, thinning beside the track and the wall.
+      if (wild(site, ground, noise, rng, cellX, y)) continue;
+      // Woods as thick as the terrain allows, with clearings.
       const open = fbm(noise, cellX * 0.08, y * 0.08, 3) > 0.35;
-      if (rng() < (open ? 0.1 : 0.6)) {
+      if (rng() < (open ? 0.1 : 0.5) * WOODS[context.terrain]) {
         site.trees.push({ x: cellX + 0.2 + rng() * 0.6, y: y + 0.2 + rng() * 0.6, r: 0.5 + rng() * 0.45 });
       }
     }
@@ -859,14 +943,14 @@ const ROOMS = [
 ];
 
 /** Rooms dug into the rock and the passages between them, on the combat grid. */
-function dungeon(seed: string, rng: Rng): Site {
+function dungeon(seed: string, rng: Rng, context: SiteContext): Site {
   const w = 48;
   const h = 36;
   const ground = new Ground(w, h, TILE.rock);
   const site: Site = {
     kind: 'dungeon',
     seed,
-    name: suggestName('dungeon', rng),
+    name: named(suggestName('dungeon', rng), context),
     w,
     h,
     cellMeters: 1.5,
@@ -875,7 +959,9 @@ function dungeon(seed: string, rng: Rng): Site {
     walls: [],
     places: [],
     streets: [],
+    terrain: context.terrain,
     trees: [],
+    rocks: [],
     boats: [],
     doors: [],
   };
@@ -969,10 +1055,19 @@ function dungeon(seed: string, rng: Rng): Site {
   return site;
 }
 
-/** The map of a place of the given kind. The same kind and seed always give the same map. */
-export function generateSite(kind: StructureKind, seed: string): Site {
+/**
+ * The map of a place of the given kind. The same kind, seed and surroundings
+ * always give the same map. Left to itself, a place stands on open plains with
+ * a road out on every side; a dungeon, being underground, ignores both.
+ */
+export function generateSite(
+  kind: StructureKind,
+  seed: string,
+  surroundings: Partial<SiteContext> = {},
+): Site {
+  const context: SiteContext = { terrain: 'plains', exits: SITE_SIDES, ...surroundings };
   const rng = seededRng(`site:${kind}:${seed}`);
-  if (kind === 'tower') return tower(seed, rng);
-  if (kind === 'dungeon') return dungeon(seed, rng);
-  return town(kind, seed, rng);
+  if (kind === 'tower') return tower(seed, rng, context);
+  if (kind === 'dungeon') return dungeon(seed, rng, context);
+  return town(kind, seed, rng, context);
 }
