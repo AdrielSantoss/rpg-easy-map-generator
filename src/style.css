@@ -176,6 +176,34 @@ body:not([data-screen='npc']) #npc-screen {
   text-align: center;
 }
 
+/* The frame the map of a place is zoomed and panned inside; it is exactly as large as the whole map. */
+.site-stage {
+  position: relative;
+  width: fit-content;
+  margin: 0 auto;
+  overflow: hidden;
+  line-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 8px 30px rgb(0 0 0 / 45%);
+  touch-action: none;
+}
+
+.site-stage.zoomed {
+  cursor: grab;
+}
+
+.site-stage.panning {
+  cursor: grabbing;
+}
+
+.site-stage #site-canvas {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  transform-origin: 0 0;
+}
+
 #tavern-canvas,
 #site-canvas {
   display: block;
@@ -514,7 +542,8 @@ input.slider:focus-visible {
   cursor: grabbing;
 }
 
-#zoom-reset {
+#zoom-reset,
+#site-zoom-reset {
   position: absolute;
   right: 10px;
   bottom: 10px;
@@ -560,7 +589,8 @@ button.danger {
   cursor: alias;
 }
 
-#zoom-reset[hidden] {
+#zoom-reset[hidden],
+#site-zoom-reset[hidden] {
   display: none;
 }
 
@@ -1121,4 +1151,8 @@ body[data-mode='map'] .sketch-only {
     zoom: 0.86;
     box-shadow: none;
   }
+}
+
+#site-zoom-reset {
+  line-height: normal;
 }

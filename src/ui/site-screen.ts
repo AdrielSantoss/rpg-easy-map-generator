@@ -2,6 +2,7 @@ import { renderSite, SITE_LABEL } from '../render/site.ts';
 import { SITE_SIDES, SITE_TERRAINS, type SiteSide, type SiteTerrain } from '../site/context.ts';
 import { generateSite } from '../site/generate.ts';
 import { STRUCTURE_KINDS, type StructureKind } from '../structures/model.ts';
+import { ZoomController } from './zoom.ts';
 
 /** Where the settings of this screen are kept in this browser. */
 const STORAGE_KEY = 'rpg-easy-map-generator:site';
@@ -51,6 +52,13 @@ const TERRAIN_LABEL: Record<SiteTerrain, string> = {
  */
 const cellPx = (kind: StructureKind) => (kind === 'dungeon' ? 60 : 28);
 
+/** Zoomed in past this, the map is drawn again with more pixels per square, to stay sharp. */
+const SHARPEN_ABOVE = 1.6;
+/** How many times finer the zoomed-in drawing is. */
+const SHARP = 2;
+/** How long the zoom must rest before the finer drawing is made, in ms. */
+const SHARPEN_DELAY = 180;
+
 function randomSeed(): string {
   return Math.random().toString(36).slice(2, 8);
 }
@@ -97,7 +105,8 @@ function loadSettings(): Settings {
  * the same kinds that are placed as icons on the world map. Picking a kind, a
  * terrain or a seed makes the map at once, and every change redraws it. A
  * structure of the world map can be opened here, and then its terrain, its
- * roads and its name come with it.
+ * roads and its name come with it. The mouse wheel zooms in and dragging pans;
+ * zoomed in, the map is redrawn finer so that it stays sharp.
  */
 export function initSiteScreen(root: HTMLElement): SiteScreen {
   const find = <T extends HTMLElement>(selector: string) => root.querySelector(selector) as T;
@@ -109,6 +118,11 @@ export function initSiteScreen(root: HTMLElement): SiteScreen {
   const exitButtons = [...root.querySelectorAll<HTMLElement>('[data-site-exit]')];
   const toggles = ['grid', 'labels', 'names', 'legend'] as const;
   const settings = loadSettings();
+  const stage = find('#site-stage');
+  const zoomReset = find<HTMLButtonElement>('#site-zoom-reset');
+  /** 1 for the whole map, SHARP while zoomed in: multiplies the pixels per square. */
+  let detail = 1;
+  let sharpening = 0;
 
   const terrainButtons = SITE_TERRAINS.map((terrain) => {
     const button = document.createElement('button');
@@ -129,7 +143,7 @@ export function initSiteScreen(root: HTMLElement): SiteScreen {
       exits: settings.exits,
       name: settings.name,
     });
-    renderSite(canvas, site, { cellPx: cellPx(settings.kind), ...settings });
+    renderSite(canvas, site, { ...settings, cellPx: cellPx(settings.kind) * detail });
     for (const button of kindButtons) {
       button.classList.toggle('active', button.dataset.siteKind === settings.kind);
     }
@@ -152,10 +166,33 @@ export function initSiteScreen(root: HTMLElement): SiteScreen {
     return site;
   };
 
+  const zoom = new ZoomController(stage, canvas, {
+    // Dragging pans, except when it is the button over the map that is pressed.
+    canLeftDrag: (e) => e.target !== zoomReset,
+    onChange: (view) => {
+      stage.classList.toggle('zoomed', view.scale > 1);
+      zoomReset.hidden = view.scale === 1;
+      clearTimeout(sharpening);
+      sharpening = window.setTimeout(() => {
+        const wanted = view.scale > SHARPEN_ABOVE ? SHARP : 1;
+        if (wanted === detail) return;
+        detail = wanted;
+        refresh();
+      }, SHARPEN_DELAY);
+    },
+  });
+  zoomReset.addEventListener('click', () => zoom.reset());
+  /** Another map has other proportions, so the view goes back to the whole of it. */
+  const fresh = () => {
+    detail = 1;
+    zoom.reset();
+    refresh();
+  };
+
   for (const button of kindButtons) {
     button.addEventListener('click', () => {
       settings.kind = button.dataset.siteKind as StructureKind;
-      refresh();
+      fresh();
     });
   }
   for (const button of exitButtons) {
@@ -194,6 +231,9 @@ export function initSiteScreen(root: HTMLElement): SiteScreen {
     refresh();
   });
   find('#site-export').addEventListener('click', () => {
+    // The picture saved is always the whole map at its ordinary size, however the screen is zoomed.
+    const zoomedDetail = detail;
+    detail = 1;
     const site = refresh();
     canvas.toBlob((blob) => {
       if (!blob) return;
@@ -202,6 +242,10 @@ export function initSiteScreen(root: HTMLElement): SiteScreen {
       link.download = `${site.kind}-${site.seed}.png`;
       link.click();
       URL.revokeObjectURL(link.href);
+      if (zoomedDetail !== detail) {
+        detail = zoomedDetail;
+        refresh();
+      }
     }, 'image/png');
   });
 
@@ -214,7 +258,7 @@ export function initSiteScreen(root: HTMLElement): SiteScreen {
       Object.assign(settings, request);
       seedInput.value = settings.seed;
       nameInput.value = settings.name;
-      refresh();
+      fresh();
     },
   };
 }
