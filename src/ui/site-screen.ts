@@ -10,6 +10,7 @@ interface Settings {
   seed: string;
   grid: boolean;
   labels: boolean;
+  names: boolean;
   legend: boolean;
 }
 
@@ -25,7 +26,14 @@ function randomSeed(): string {
 }
 
 function loadSettings(): Settings {
-  const fresh: Settings = { kind: 'city', seed: randomSeed(), grid: true, labels: true, legend: true };
+  const fresh: Settings = {
+    kind: 'city',
+    seed: randomSeed(),
+    grid: true,
+    labels: true,
+    names: true,
+    legend: true,
+  };
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Partial<Settings> | null;
     if (!saved || typeof saved !== 'object') return fresh;
@@ -36,6 +44,7 @@ function loadSettings(): Settings {
       seed: typeof saved.seed === 'string' && saved.seed.length <= 80 ? saved.seed : fresh.seed,
       grid: typeof saved.grid === 'boolean' ? saved.grid : fresh.grid,
       labels: typeof saved.labels === 'boolean' ? saved.labels : fresh.labels,
+      names: typeof saved.names === 'boolean' ? saved.names : fresh.names,
       legend: typeof saved.legend === 'boolean' ? saved.legend : fresh.legend,
     };
   } catch {
@@ -55,7 +64,7 @@ export function initSiteScreen(root: HTMLElement): void {
   const seedInput = find<HTMLInputElement>('#site-seed');
   const status = find('#site-status');
   const kindButtons = [...root.querySelectorAll<HTMLElement>('[data-site-kind]')];
-  const toggles = ['grid', 'labels', 'legend'] as const;
+  const toggles = ['grid', 'labels', 'names', 'legend'] as const;
   const settings = loadSettings();
 
   const refresh = () => {

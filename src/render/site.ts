@@ -7,6 +7,8 @@ export interface SiteView {
   grid: boolean;
   /** Numbers on the notable places and names along the main streets. */
   labels: boolean;
+  /** Writes the name of each place on the map itself, where otherwise its number goes. */
+  names: boolean;
   /** The list of places by number, on a strip of parchment beside the map. */
   legend: boolean;
 }
@@ -529,7 +531,7 @@ function drawDoors(ctx: CanvasRenderingContext2D, site: Site, px: number): void 
   }
 }
 
-function drawLabels(ctx: CanvasRenderingContext2D, site: Site, px: number): void {
+function drawLabels(ctx: CanvasRenderingContext2D, site: Site, px: number, names: boolean): void {
   // Street names, written along the street.
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -546,6 +548,10 @@ function drawLabels(ctx: CanvasRenderingContext2D, site: Site, px: number): void
     ctx.fillText(street.name, 0, 0);
     ctx.restore();
   }
+  if (names) {
+    drawNames(ctx, site, px);
+    return;
+  }
   // The number of each notable place, on a disc of parchment.
   const radius = px * 0.68;
   ctx.font = `bold ${Math.round(px * 0.78)}px ${SERIF}`;
@@ -559,6 +565,66 @@ function drawLabels(ctx: CanvasRenderingContext2D, site: Site, px: number): void
     ctx.stroke();
     ctx.fillStyle = INK;
     ctx.fillText(String(index + 1), place.x * px, place.y * px + px * 0.04);
+  }
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+}
+
+/** Splits a long name in two lines of about the same length. */
+function twoLines(name: string): string[] {
+  if (name.length <= 13 || !name.includes(' ')) return [name];
+  const words = name.split(' ');
+  let best = [name];
+  let bestLength = name.length;
+  for (let i = 1; i < words.length; i++) {
+    const lines = [words.slice(0, i).join(' '), words.slice(i).join(' ')];
+    const length = Math.max(lines[0].length, lines[1].length);
+    if (length < bestLength) {
+      best = lines;
+      bestLength = length;
+    }
+  }
+  return best;
+}
+
+/**
+ * The name of each notable place on a small banner over it. A banner that
+ * would cover another is moved up or down until it is clear.
+ */
+function drawNames(ctx: CanvasRenderingContext2D, site: Site, px: number): void {
+  const size = Math.round(site.kind === 'dungeon' ? px * 0.36 : px * 0.6);
+  const lineHeight = size * 1.12;
+  const pad = size * 0.4;
+  const placed: { x: number; y: number; w: number; h: number }[] = [];
+  ctx.font = `bold ${size}px ${SERIF}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const place of site.places) {
+    const lines = twoLines(place.name);
+    const w = Math.max(...lines.map((line) => ctx.measureText(line).width)) + pad * 2;
+    const h = lines.length * lineHeight + pad;
+    const x = Math.min(site.w * px - w - 2, Math.max(2, place.x * px - w / 2));
+    const home = place.y * px - h / 2;
+    let y = home;
+    for (const step of [0, -1, 1, -2, 2, -3, 3]) {
+      y = Math.min(site.h * px - h - 2, Math.max(2, home + step * (h + 3)));
+      const clear = placed.every(
+        (other) => x + w < other.x || other.x + other.w < x || y + h < other.y || other.y + other.h < y,
+      );
+      if (clear) break;
+    }
+    placed.push({ x, y, w, h });
+    ctx.fillStyle = 'rgba(240, 229, 198, 0.92)';
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = Math.max(1, size * 0.09);
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, size * 0.3);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = INK;
+    for (const [index, line] of lines.entries()) {
+      ctx.fillText(line, x + w / 2, y + pad / 2 + lineHeight * (index + 0.5) + size * 0.04);
+    }
   }
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
@@ -600,7 +666,14 @@ function drawScale(ctx: CanvasRenderingContext2D, site: Site, px: number): void 
   ctx.textAlign = 'left';
 }
 
-function drawLegend(ctx: CanvasRenderingContext2D, site: Site, px: number, x: number, width: number): void {
+function drawLegend(
+  ctx: CanvasRenderingContext2D,
+  site: Site,
+  px: number,
+  x: number,
+  width: number,
+  numbered: boolean,
+): void {
   const height = site.h * px;
   const paper = ctx.createLinearGradient(x, 0, x + width, 0);
   paper.addColorStop(0, '#e3d3aa');
@@ -651,19 +724,23 @@ function drawLegend(ctx: CanvasRenderingContext2D, site: Site, px: number, x: nu
   const step = Math.min(px * 1.5, (height - y - px * 1.2) / Math.max(1, site.places.length));
   const text = Math.min(px * 0.82, step * 0.62);
   for (const [index, place] of site.places.entries()) {
-    const radius = Math.min(px * 0.55, step * 0.42);
-    ctx.fillStyle = '#f6eed8';
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = px * 0.07;
-    ctx.beginPath();
-    ctx.arc(left + radius, y - text * 0.32, radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
+    // Without numbers on the map, the legend is a plain list of what there is to find.
+    const radius = numbered ? Math.min(px * 0.55, step * 0.42) : -px * 0.25;
+    if (numbered) {
+      ctx.fillStyle = '#f6eed8';
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = px * 0.07;
+      ctx.beginPath();
+      ctx.arc(left + radius, y - text * 0.32, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = INK;
+      ctx.textAlign = 'center';
+      ctx.font = `bold ${Math.round(radius * 1.15)}px ${SERIF}`;
+      ctx.fillText(String(index + 1), left + radius, y - text * 0.32 + radius * 0.4);
+      ctx.textAlign = 'left';
+    }
     ctx.fillStyle = INK;
-    ctx.textAlign = 'center';
-    ctx.font = `bold ${Math.round(radius * 1.15)}px ${SERIF}`;
-    ctx.fillText(String(index + 1), left + radius, y - text * 0.32 + radius * 0.4);
-    ctx.textAlign = 'left';
     let nameSize = text;
     do {
       ctx.font = `${Math.round(nameSize)}px ${SERIF}`;
@@ -697,8 +774,8 @@ export function renderSite(canvas: HTMLCanvasElement, site: Site, view: SiteView
   for (const wall of site.walls) drawWall(ctx, wall, px);
   drawTrees(ctx, site, px);
   drawDoors(ctx, site, px);
-  if (view.labels) drawLabels(ctx, site, px);
+  if (view.labels) drawLabels(ctx, site, px, view.names);
   drawScale(ctx, site, px);
   ctx.restore();
-  if (view.legend) drawLegend(ctx, site, px, mapWidth, legendWidth);
+  if (view.legend) drawLegend(ctx, site, px, mapWidth, legendWidth, view.labels && !view.names);
 }
