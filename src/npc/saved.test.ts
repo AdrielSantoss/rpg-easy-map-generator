@@ -14,6 +14,7 @@ const npc = (id = 'a', seed = 7): SavedNpc => ({
   options: { age: 'adult', wealth: 'noble' },
   roll: 2,
   sheet: generateSheet('elf', 'female', seed, { age: 'adult', wealth: 'noble', roll: 2 }),
+  sprite: 3,
 });
 
 describe('saving an NPC', () => {
@@ -77,6 +78,8 @@ describe('saving an NPC', () => {
     expect(read.sheet.attacks[0]).toEqual({ name: 'Faca', bonus: '', damage: '' });
     expect(read.sheet.coins.gp).toBe(0);
     expect(read.sheet.features).toBe('');
+    expect(readNpc({ ...npc(), sprite: 99 })?.sprite).toBe(4);
+    expect(readNpc({ ...npc(), sprite: 'two' })?.sprite).toBe(0);
   });
 });
 

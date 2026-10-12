@@ -9,6 +9,7 @@ import {
   type NpcGender,
   type NpcRace,
   type NpcWealth,
+  describeNpc,
 } from '../npc/prompt.ts';
 import { parseNpc, rememberNpc, serializeNpc, type SavedNpc } from '../npc/saved.ts';
 import { CLASS, CLASSES, type ClassId } from '../npc/sheet-data.ts';
@@ -16,6 +17,7 @@ import { generateSheet, MAX_LEVEL } from '../npc/sheet.ts';
 import { drawSheetCard } from '../render/sheet-card.ts';
 import { drawToken } from '../render/token.ts';
 import { initSheetView } from './npc-sheet.ts';
+import { initSpriteView } from './npc-sprite.ts';
 import { forgetNpc, loadNpcs, storeNpc } from './npc-store.ts';
 
 /** Where the password is kept in this browser once it has been accepted. */
@@ -66,7 +68,7 @@ const WEALTH_LABEL: Record<NpcWealth | Any, string> = {
 };
 
 /** What is shown in the middle: the round token, or the character sheet short or complete. */
-type View = 'token' | 'card' | 'sheet';
+type View = 'token' | 'card' | 'sheet' | 'sprite';
 
 type Token = SavedNpc;
 
@@ -151,6 +153,32 @@ export function initNpcScreen(root: HTMLElement): void {
     drawCard();
     keep();
   });
+
+  const spriteView = initSpriteView(
+    find('#npc-sprite'),
+    () => root.dataset.view === 'sprite' && document.body.dataset.screen === 'npc',
+    (option) => {
+      if (!shown) return;
+      shown.sprite = option;
+      keep();
+    },
+    () => shown?.file ?? 'npc',
+  );
+  /** Shows the looks of an NPC: its body from what the portrait was asked for, its dress from its sheet. */
+  const showSprite = (token: Token) => {
+    const { traits } = describeNpc(token.race, token.gender, token.seed, token.options);
+    spriteView.show(
+      {
+        race: token.race,
+        gender: token.gender,
+        age: traits.age,
+        wealth: traits.wealth,
+        classId: token.sheet.classId,
+      },
+      token.seed,
+      token.sprite,
+    );
+  };
 
   const setView = (view: View) => {
     root.dataset.view = view;
@@ -251,6 +279,7 @@ export function initNpcScreen(root: HTMLElement): void {
     loading.src = token.image;
     summary.textContent = token.summary;
     sheetView.show(token.sheet, token.image);
+    showSprite(token);
     for (const button of [save, saveCard, saveSheet, reroll, exportNpc, ...viewButtons])
       button.disabled = false;
     for (const [index, thumb] of [...history.children].entries()) {
@@ -286,6 +315,7 @@ export function initNpcScreen(root: HTMLElement): void {
     if (!shown) return;
     shown.sheet = writeSheet(shown);
     sheetView.show(shown.sheet, shown.image);
+    showSprite(shown);
     drawCard();
     keep();
   };
@@ -362,6 +392,7 @@ export function initNpcScreen(root: HTMLElement): void {
         summary: result.summary ?? '',
         file: `npc-${race}-${gender}-${seed}`,
         roll: 0,
+        sprite: 0,
         id: `${Date.now()}-${seed}`,
         created: Date.now(),
       };

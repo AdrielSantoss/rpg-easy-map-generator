@@ -10,6 +10,7 @@ import {
 } from './prompt.ts';
 import { ABILITIES, CLASSES, SKILLS, type Ability, type ClassId, type Skill } from './sheet-data.ts';
 import { ATTACK_ROWS, MAX_LEVEL, type CharacterSheet } from './sheet.ts';
+import { SPRITE_OPTIONS } from './sprite.ts';
 
 /**
  * An NPC as it is kept: the portrait, what it was asked for, and the sheet with
@@ -32,6 +33,8 @@ export interface SavedNpc {
   /** How many times the sheet was rolled again. */
   roll: number;
   sheet: CharacterSheet;
+  /** Which of the sprite looks offered was chosen, from 0. */
+  sprite: number;
 }
 
 const APP = 'rpg-easy-map-generator';
@@ -154,6 +157,7 @@ export function readNpc(raw: unknown): SavedNpc | null {
     },
     roll: whole(raw.roll, 0, 1_000_000, 0),
     sheet: readSheet(raw.sheet),
+    sprite: whole(raw.sprite, 0, SPRITE_OPTIONS - 1, 0),
   };
 }
 

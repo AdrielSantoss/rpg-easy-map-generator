@@ -139,6 +139,53 @@ body:not([data-screen='npc']) #npc-screen {
   flex-basis: 860px;
 }
 
+/* The sprite: five looks in a row, the chosen one large beneath them. */
+.sprite-hint {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.sprite-options {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.sprite-options button {
+  width: auto;
+  padding: 3px;
+  line-height: 0;
+  border-width: 2px;
+}
+
+.sprite-options canvas,
+#sprite-preview {
+  border-radius: 4px;
+}
+
+#sprite-preview {
+  display: block;
+  width: min(100%, 384px);
+  margin: 0 auto 12px;
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 30px rgb(0 0 0 / 45%);
+}
+
+.sprite-row {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.sprite-row button,
+#sprite-save {
+  width: auto;
+  padding: 4px 14px;
+}
+
 #npc-card {
   display: block;
   max-width: 100%;
