@@ -33,7 +33,8 @@ The latest NPCs stay in the browser between visits, and any of them can be saved
 
 Every NPC also has a **sprite** in pixel art, put together from the layered sheets of the Liberated Pixel
 Cup: five looks to choose from, each animated standing, walking, cutting with a sword and shooting a bow in
-four directions, and saved as a sprite sheet.
+four directions, and saved as a sprite sheet. The same figure can also be shown from straight above, as the maps
+are: no sheet was drawn from that side, so that view is drawn by rule, in the same color ramps.
 
 ## How the world map works
 

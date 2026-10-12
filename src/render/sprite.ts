@@ -13,7 +13,9 @@ import {
   type SpriteFacing,
   type SpriteLayer,
   type SpriteLook,
+  type SpriteView,
 } from '../npc/sprite.ts';
+import { topStrip } from './sprite-top.ts';
 
 /** Where the sheets are served from. */
 const BASE = '/lpc/';
@@ -96,7 +98,21 @@ const composed = new Map<string, Promise<HTMLCanvasElement>>();
  * a row for each facing (in the order of `SPRITE_FACINGS`), a column for each
  * frame, each in a cell of `CELL` pixels with the figure in its middle.
  */
-export function spriteStrip(look: SpriteLook, animation: SpriteAnimation): Promise<HTMLCanvasElement> {
+export function spriteStrip(
+  look: SpriteLook,
+  animation: SpriteAnimation,
+  view: SpriteView = 'angled',
+): Promise<HTMLCanvasElement> {
+  if (view === 'top') {
+    // Seen from above there are no sheets to fetch: the figure is drawn.
+    const key = `top|${animation}|${JSON.stringify(look.top)}`;
+    let drawn = composed.get(key);
+    if (!drawn) {
+      drawn = Promise.resolve(topStrip(look, animation));
+      composed.set(key, drawn);
+    }
+    return drawn;
+  }
   const layers = layersFor(look, animation);
   const key = `${animation}|${layers.map((l) => `${l.id}:${l.tint ? `${l.tint.from}>${l.tint.to}` : ''}`).join('|')}`;
   let pending = composed.get(key);
@@ -150,8 +166,9 @@ export function spriteStrip(look: SpriteLook, animation: SpriteAnimation): Promi
 
 /**
  * Draws one frame from a strip made by `spriteStrip`, enlarged `zoom` times
- * with its pixels kept square, with the feet of the figure at (x, y). `scale`
- * is the height of the figure against an adult human.
+ * with its pixels kept square. Seen at a slant the figure stands with its feet
+ * at (x, y); seen from above it stands with its middle there. `scale` is the
+ * height of the figure against an adult human.
  */
 export function drawSprite(
   ctx: CanvasRenderingContext2D,
@@ -162,10 +179,11 @@ export function drawSprite(
   y: number,
   zoom: number,
   scale = 1,
+  view: SpriteView = 'angled',
 ): void {
   const size = CELL * zoom * scale;
   // Within a cell, the feet stand at the bottom of the figure's own frame.
-  const feet = (CELL + FRAME) / 2 - 2;
+  const feet = view === 'top' ? CELL / 2 : (CELL + FRAME) / 2 - 2;
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(
     strip,
@@ -185,13 +203,17 @@ export function drawSprite(
  * ground: a row for each animation and facing (see `sheetCell`), a column for
  * each frame, each in a cell of `CELL` pixels.
  */
-export async function drawSpriteSheet(canvas: HTMLCanvasElement, look: SpriteLook): Promise<void> {
+export async function drawSpriteSheet(
+  canvas: HTMLCanvasElement,
+  look: SpriteLook,
+  view: SpriteView = 'angled',
+): Promise<void> {
   canvas.width = SHEET_COLUMNS * CELL;
   canvas.height = SHEET_ROWS * CELL;
   const ctx = canvas.getContext('2d')!;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   for (const animation of SPRITE_ANIMATIONS) {
-    const strip = await spriteStrip(look, animation);
+    const strip = await spriteStrip(look, animation, view);
     const [, row] = sheetCell(animation, SPRITE_FACINGS[0], 0);
     ctx.drawImage(strip, 0, row * CELL);
   }

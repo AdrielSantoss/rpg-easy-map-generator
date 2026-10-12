@@ -47,8 +47,43 @@ export interface SpriteLayer {
   large?: boolean;
 }
 
+/**
+ * The two ways the figure can be seen: at the slant of the old console RPGs,
+ * as the sheets were drawn, or from straight above, as the maps are.
+ */
+export const SPRITE_VIEWS = ['angled', 'top'] as const;
+export type SpriteView = (typeof SPRITE_VIEWS)[number];
+
+/**
+ * What the figure seen from above is drawn from: the same person in the same
+ * clothes as the layers show, said in words, since no sheet was drawn from
+ * that side. Colors are names of ramps in SPRITE_PALETTES.
+ */
+export interface TopLook {
+  /** How broad in the shoulders, against a grown man, who is 1. */
+  width: number;
+  skin: string;
+  hair: string;
+  /** The cut of the hair as it shows from above; 'none' under a hood or a helm, and on scales. */
+  hairStyle: 'none' | 'short' | 'long' | 'ponytail' | 'balding' | 'mohawk';
+  beard: boolean;
+  ears: 'round' | 'pointed';
+  horns: boolean;
+  tusks: boolean;
+  snout: boolean;
+  outfit: 'tunic' | 'robe' | 'armor' | 'leather' | 'fur';
+  /** The ramp of the clothes: of cloth, or of metal for armor. */
+  color: string;
+  boots: string;
+  cape: string | null;
+  headgear: 'none' | 'hood' | 'hat' | 'helm';
+  /** The ramp of what is worn on the head: of cloth, or of metal for a helm. */
+  headgearColor: string;
+}
+
 export interface SpriteLook {
   layers: SpriteLayer[];
+  top: TopLook;
   /** How large the figure is drawn against an adult human, which is 1. */
   scale: number;
 }
@@ -288,8 +323,41 @@ export function spriteLooks(subject: SpriteSubject, seed: number): SpriteLook[] 
       { id: 'bow-fg', z: 140, only: 'shoot' },
       { id: 'arrow', z: 141, only: 'shoot' },
     );
+    const covered = headgear === 'hood' || headgear === 'helm';
+    const top: TopLook = {
+      width:
+        (gender === 'female' ? 0.92 : 1) *
+        (race === 'orc' || race === 'dwarf' ? 1.16 : race === 'half-orc' ? 1.08 : 1),
+      skin: skinColor,
+      hair: hairColor,
+      hairStyle:
+        race === 'dragonborn' || covered
+          ? 'none'
+          : style === 'long' || style === 'bob'
+            ? 'long'
+            : style === 'ponytail'
+              ? 'ponytail'
+              : style === 'balding'
+                ? 'balding'
+                : style === 'shorthawk'
+                  ? 'mohawk'
+                  : 'short',
+      beard: bearded,
+      ears: pointed ? 'pointed' : 'round',
+      horns: race === 'tiefling',
+      tusks: headKind === 'orc',
+      snout: race === 'dragonborn',
+      outfit,
+      color,
+      boots: outfit === 'armor' ? color : boots,
+      cape: caped ? cape : null,
+      headgear,
+      headgearColor:
+        headgear === 'helm' ? (outfit === 'armor' ? color : 'iron') : outfit === 'armor' ? cape : color,
+    };
     return {
       layers: layers.sort((a, b) => a.z - b.z),
+      top,
       // A child is drawn as a small grown-up, though never smaller than can be made out.
       scale: Math.max(0.64, HEIGHT[race] * (child ? 0.8 : 1)),
     };
@@ -329,4 +397,72 @@ export function recolorTable(tint: NonNullable<SpriteLayer['tint']>): Map<number
   if (!from || !to) throw new Error(`No ${tint.material} ramp "${!from ? tint.from : tint.to}"`);
   const number = (color: string) => parseInt(color.slice(1), 16);
   return new Map(from.map((color, index) => [number(color), number(to[index])]));
+}
+
+/**
+ * The stance of the figure seen from above, in one frame. It keeps step with
+ * the sheets: the same animations, with as many frames each.
+ */
+export interface TopPose {
+  /** From -1 to 1: how far the left foot is ahead of the right. The arms swing against it. */
+  stride: number;
+  /** From 0 to 1, the lift of a breath. */
+  breath: number;
+  weapon: 'none' | 'sword' | 'bow';
+  /** Where the sword arm points, in radians from straight ahead toward the right hand. */
+  cut: number;
+  /** Whether the blade is leaving its streak in the air. */
+  streak: boolean;
+  /** From 0 to 1: how far the bow arm is raised, and how far the string is drawn. */
+  aim: number;
+  draw: number;
+  /** How far the arrow has flown from the bow; 0 is on the string, null is none. */
+  arrow: number | null;
+}
+
+/** The sword arm through a cut: back over the shoulder, then round and across the front. */
+const CUT = [0.2, 1.3, 1.95, 0.5, -0.5, -0.75] as const;
+
+/** The stance of the figure seen from above in a frame of an animation. Frames past the last wrap round. */
+export function topPose(animation: SpriteAnimation, frame: number): TopPose {
+  const count = SPRITE_FRAMES[animation];
+  const f = ((Math.floor(frame) % count) + count) % count;
+  const rest: TopPose = {
+    stride: 0,
+    breath: 0,
+    weapon: 'none',
+    cut: 0,
+    streak: false,
+    aim: 0,
+    draw: 0,
+    arrow: null,
+  };
+  switch (animation) {
+    case 'idle':
+      return { ...rest, breath: f };
+    case 'walk':
+      return { ...rest, stride: Math.sin((f / count) * Math.PI * 2) };
+    case 'slash':
+      return {
+        ...rest,
+        stride: f >= 2 ? 0.35 : 0.1,
+        weapon: 'sword',
+        cut: CUT[f],
+        streak: f === 3 || f === 4,
+      };
+    case 'shoot': {
+      // Up with the bow, back with the string, a moment's hold, loose, and down again.
+      const aim = Math.min(1, f / 3);
+      const drawn = f < 3 ? 0 : f <= 7 ? Math.min(1, (f - 3) / 3) : 0;
+      const loosed = f >= 8 && f <= 10;
+      return {
+        ...rest,
+        stride: 0.25,
+        weapon: 'bow',
+        aim: f >= 11 ? (count - f) / 3 : aim,
+        draw: drawn,
+        arrow: f >= 3 && f <= 7 ? 0 : loosed ? (f - 7) * 9 : null,
+      };
+    }
+  }
 }

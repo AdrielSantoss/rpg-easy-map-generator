@@ -15,6 +15,7 @@ import {
   SPRITE_OPTIONS,
   spriteFrameAt,
   spriteLooks,
+  topPose,
   type SpriteLook,
   type SpriteSubject,
 } from './sprite.ts';
@@ -243,5 +244,85 @@ describe('the sprite sheet', () => {
     const second = Array.from({ length: 60 }, (_, k) => spriteFrameAt('shoot', k / 30));
     expect(new Set(second).size).toBe(SPRITE_FRAMES.shoot);
     expect(Math.max(...second)).toBe(SPRITE_FRAMES.shoot - 1);
+  });
+});
+
+describe('the figure seen from above', () => {
+  it('is the same person in the same clothes as the layers show', () => {
+    for (const look of everyLook()) {
+      const { top } = look;
+      // The same ramps, so the two views match color for color.
+      expect(top.skin).toBe(tintOf(look, 'body')?.to);
+      const clothes =
+        tintOf(look, 'torso-plate') ?? tintOf(look, 'torso-shirt') ?? tintOf(look, 'torso-leather');
+      if (clothes) expect(top.color).toBe(clothes.to);
+      expect(top.outfit === 'armor').toBe(has(look, 'torso-plate'));
+      expect(top.outfit === 'robe').toBe(has(look, 'legs-skirt'));
+      expect(top.cape !== null).toBe(has(look, 'cape'));
+      if (top.cape) expect(top.cape).toBe(tintOf(look, 'cape')?.to);
+      expect(top.beard).toBe(has(look, 'beard'));
+      expect(top.horns).toBe(has(look, 'horns'));
+      expect(top.snout).toBe(has(look, 'head-lizard'));
+      expect(top.tusks).toBe(has(look, 'head-orc'));
+      expect(top.ears === 'pointed').toBe(has(look, 'ears-elven'));
+      expect(top.headgear === 'hood').toBe(has(look, 'hat-hood'));
+      expect(top.headgear === 'helm').toBe(has(look, 'hat-helm'));
+      expect(top.headgear === 'hat').toBe(has(look, 'hat-wizard'));
+      // No hair where the layers show none.
+      expect(top.hairStyle === 'none').toBe(!has(look, 'hair'));
+      if (has(look, 'hair')) expect(top.hair).toBe(tintOf(look, 'hair')?.to);
+    }
+  });
+
+  it('uses only ramps that exist', () => {
+    for (const look of everyLook()) {
+      const { top } = look;
+      const metal = top.outfit === 'armor';
+      expect(SPRITE_PALETTES.body).toHaveProperty(top.skin);
+      expect(SPRITE_PALETTES.hair).toHaveProperty(top.hair);
+      expect(metal ? SPRITE_PALETTES.metal : SPRITE_PALETTES.cloth).toHaveProperty(top.color);
+      expect(metal ? SPRITE_PALETTES.metal : SPRITE_PALETTES.cloth).toHaveProperty(top.boots);
+      if (top.cape) expect(SPRITE_PALETTES.cloth).toHaveProperty(top.cape);
+      if (top.headgear === 'helm') expect(SPRITE_PALETTES.metal).toHaveProperty(top.headgearColor);
+      if (top.headgear === 'hood' || top.headgear === 'hat')
+        expect(SPRITE_PALETTES.cloth).toHaveProperty(top.headgearColor);
+    }
+  });
+
+  it('moves in step with the sheets: the same animations, frame for frame', () => {
+    for (const animation of SPRITE_ANIMATIONS) {
+      const count = SPRITE_FRAMES[animation];
+      expect(topPose(animation, count)).toEqual(topPose(animation, 0));
+      expect(topPose(animation, -1)).toEqual(topPose(animation, count - 1));
+    }
+    const walk = Array.from({ length: SPRITE_FRAMES.walk }, (_, frame) => topPose('walk', frame).stride);
+    expect(Math.max(...walk)).toBeGreaterThan(0.8);
+    expect(Math.min(...walk)).toBeLessThan(-0.8);
+    expect(walk.every((_, frame) => topPose('walk', frame).weapon === 'none')).toBe(true);
+  });
+
+  it('raises the sword behind the shoulder and brings it across, streaking only in the cut', () => {
+    const cut = Array.from({ length: SPRITE_FRAMES.slash }, (_, frame) => topPose('slash', frame));
+    const back = cut.findIndex((pose) => pose.cut === Math.max(...cut.map((p) => p.cut)));
+    expect(cut[back].cut).toBeGreaterThan(1.5);
+    expect(cut[cut.length - 1].cut).toBeLessThan(0);
+    for (const [frame, pose] of cut.entries()) {
+      expect(pose.weapon).toBe('sword');
+      if (frame <= back) expect(pose.streak).toBe(false);
+    }
+    expect(cut.filter((pose) => pose.streak).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('draws the bow, holds, and lets the arrow fly on', () => {
+    const shot = Array.from({ length: SPRITE_FRAMES.shoot }, (_, frame) => topPose('shoot', frame));
+    expect(shot.some((pose) => pose.draw === 1 && pose.aim === 1)).toBe(true);
+    // While the string is back the arrow is on it; once loosed it only gets further away.
+    for (const pose of shot) if (pose.draw > 0) expect(pose.arrow).toBe(0);
+    const flight = shot
+      .map((pose) => pose.arrow)
+      .filter((arrow): arrow is number => arrow !== null && arrow > 0);
+    expect(flight.length).toBeGreaterThanOrEqual(2);
+    expect([...flight].sort((a, b) => a - b)).toEqual(flight);
+    expect(shot[0].aim).toBe(0);
   });
 });

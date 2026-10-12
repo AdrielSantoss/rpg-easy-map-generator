@@ -6,6 +6,7 @@ import {
   type SpriteFacing,
   type SpriteLook,
   type SpriteSubject,
+  type SpriteView as View,
 } from '../npc/sprite.ts';
 import { drawSprite, drawSpriteSheet, spriteStrip } from '../render/sprite.ts';
 
@@ -21,11 +22,13 @@ const ANIMATION_LABEL: Record<SpriteAnimation, string> = {
   shoot: 'Arco',
 };
 const FACING_LABEL: Record<SpriteFacing, string> = {
-  down: '↓ Frente',
+  down: '↓ Baixo',
   left: '← Esquerda',
   right: '→ Direita',
-  up: '↑ Costas',
+  up: '↑ Cima',
 };
+const VIEW_LABEL: Record<View, string> = { angled: 'Inclinada', top: 'De cima' };
+const VIEW_ORDER: readonly View[] = ['angled', 'top'];
 /** The order the facings are offered in, which is not that of the rows of a sheet. */
 const FACING_ORDER: readonly SpriteFacing[] = ['down', 'left', 'right', 'up'];
 
@@ -70,9 +73,10 @@ export function initSpriteView(
   let chosen = 0;
   let animation: SpriteAnimation = 'walk';
   let facing: SpriteFacing = 'down';
+  let view: View = 'angled';
   /** When the animation on screen was started, in ms. */
   let started = performance.now();
-  /** The figures put together so far, by look and animation; the rest are still being fetched. */
+  /** The figures put together so far, by look, view and animation; the rest are still being fetched. */
   const strips = new Map<string, HTMLCanvasElement>();
   /** Counts the NPCs shown, so that a figure arriving late for an earlier one is dropped. */
   let showing = 0;
@@ -82,11 +86,11 @@ export function initSpriteView(
   const fetchStrips = () => {
     const mine = showing;
     for (const [option, look] of looks.entries()) {
-      const wanted = animation;
-      if (strips.has(`${option}:${wanted}`)) continue;
-      void spriteStrip(look, wanted).then((strip) => {
+      const key = `${option}:${view}:${animation}`;
+      if (strips.has(key)) continue;
+      void spriteStrip(look, animation, view).then((strip) => {
         if (mine !== showing) return;
-        strips.set(`${option}:${wanted}`, strip);
+        strips.set(key, strip);
         last = -1;
       });
     }
@@ -144,6 +148,13 @@ export function initSpriteView(
     (value) => (animation = value),
   );
   choices(
+    find('#sprite-views'),
+    VIEW_ORDER,
+    VIEW_LABEL,
+    () => view,
+    (value) => (view = value),
+  );
+  choices(
     find('#sprite-facings'),
     FACING_ORDER,
     FACING_LABEL,
@@ -159,14 +170,17 @@ export function initSpriteView(
     for (const [option, thumb] of thumbs.entries()) {
       const ctx = thumb.canvas.getContext('2d')!;
       ground(ctx, thumb.canvas.width, thumb.canvas.height, 64);
-      const strip = strips.get(`${option}:${animation}`);
-      if (strip) drawSprite(ctx, strip, facing, frame, 48, 118, OPTION_ZOOM, looks[option].scale);
+      const strip = strips.get(`${option}:${view}:${animation}`);
+      const y = view === 'top' ? 64 : 118;
+      if (strip) drawSprite(ctx, strip, facing, frame, 48, y, OPTION_ZOOM, looks[option].scale, view);
     }
     const ctx = preview.getContext('2d')!;
     ground(ctx, preview.width, preview.height, 96);
-    const strip = strips.get(`${chosen}:${animation}`);
-    if (strip)
-      drawSprite(ctx, strip, facing, frame, preview.width / 2, 322, PREVIEW_ZOOM, looks[chosen].scale);
+    const strip = strips.get(`${chosen}:${view}:${animation}`);
+    const y = view === 'top' ? preview.height / 2 : 322;
+    if (strip) {
+      drawSprite(ctx, strip, facing, frame, preview.width / 2, y, PREVIEW_ZOOM, looks[chosen].scale, view);
+    }
   };
   const tick = (now: number) => {
     requestAnimationFrame(tick);
@@ -183,12 +197,12 @@ export function initSpriteView(
     const look = looks[chosen];
     if (!look) return;
     const sheet = document.createElement('canvas');
-    await drawSpriteSheet(sheet, look);
+    await drawSpriteSheet(sheet, look, view);
     sheet.toBlob((blob) => {
       if (!blob) return;
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = `${fileName()}-sprite.png`;
+      link.download = `${fileName()}-sprite${view === 'top' ? '-de-cima' : ''}.png`;
       link.click();
       URL.revokeObjectURL(link.href);
     }, 'image/png');
