@@ -4,3 +4,6 @@ dist
 .vitest
 .wrangler
 .dev.vars
+
+# Art brought in by the user for their own use: never published with the project.
+acervo

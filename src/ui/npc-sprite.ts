@@ -8,6 +8,7 @@ import {
   type SpriteSubject,
   type SpriteView as View,
 } from '../npc/sprite.ts';
+import { matchTokens, readCatalog, type TokenArt, type TokenCatalog } from '../npc/tokens.ts';
 import { drawSprite, drawSpriteSheet, spriteStrip } from '../render/sprite.ts';
 
 export interface SpriteView {
@@ -27,8 +28,51 @@ const FACING_LABEL: Record<SpriteFacing, string> = {
   right: '→ Direita',
   up: '↑ Cima',
 };
-const VIEW_LABEL: Record<View, string> = { angled: 'Inclinada', top: 'De cima' };
-const VIEW_ORDER: readonly View[] = ['angled', 'top'];
+/** The two views put together from sheets, and the figures an artist drew whole. */
+type Style = View | 'art';
+const VIEW_LABEL: Record<Style, string> = { angled: 'Inclinada', top: 'De cima', art: 'Ilustrada' };
+const VIEW_ORDER: readonly Style[] = ['angled', 'top', 'art'];
+/**
+ * Where a collection of illustrated figures may be: published with the site,
+ * or, on the machine it is being developed on, in a folder kept out of it.
+ */
+const ART_FOLDERS = ['/tokens/', '/acervo/tokens/'];
+
+/** The collection of illustrated figures, if there is one to be had. */
+async function loadArt(): Promise<{ folder: string; catalog: TokenCatalog } | null> {
+  for (const folder of ART_FOLDERS) {
+    try {
+      const response = await fetch(`${folder}catalog.json`);
+      if (!response.ok) continue;
+      const catalog = readCatalog(await response.json());
+      if (catalog && catalog.tokens.length > 0) return { folder, catalog };
+    } catch {
+      // Not there, or not a catalog: try the next place.
+    }
+  }
+  return null;
+}
+
+/** A still figure, standing on its shadow with its feet at (x, y), as large as fits in the box given. */
+function drawArt(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): void {
+  const scale = Math.min(width / image.width, height / image.height);
+  const w = image.width * scale;
+  const h = image.height * scale;
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
+  ctx.beginPath();
+  ctx.ellipse(x, y - h * 0.06, w * 0.42, h * 0.07, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(image, x - w / 2, y - h, w, h);
+}
 /** The order the facings are offered in, which is not that of the rows of a sheet. */
 const FACING_ORDER: readonly SpriteFacing[] = ['down', 'left', 'right', 'up'];
 
@@ -73,7 +117,14 @@ export function initSpriteView(
   let chosen = 0;
   let animation: SpriteAnimation = 'walk';
   let facing: SpriteFacing = 'down';
-  let view: View = 'angled';
+  let view: Style = 'angled';
+  /** The collection of illustrated figures, once it has been found, and those offered to the NPC on screen. */
+  let art: { folder: string; catalog: TokenCatalog } | null = null;
+  let subjectNow: SpriteSubject | null = null;
+  let seedNow = 0;
+  let offered: { token: TokenArt; image: HTMLImageElement }[] = [];
+  const credit = find('.sprite-credit');
+  const sheetCredit = credit.innerHTML;
   /** When the animation on screen was started, in ms. */
   let started = performance.now();
   /** The figures put together so far, by look, view and animation; the rest are still being fetched. */
@@ -83,7 +134,43 @@ export function initSpriteView(
   let last = -1;
 
   /** Asks for the figures of the animation on screen, for every look. */
+  /** Picks the illustrated figures that suit the NPC on screen, and fetches their pictures. */
+  const offer = () => {
+    offered = [];
+    if (!art || !subjectNow) return;
+    const { folder } = art;
+    for (const token of matchTokens(art.catalog, subjectNow, seedNow, thumbs.length)) {
+      const image = new Image();
+      image.onload = () => (last = -1);
+      image.src = folder + token.file;
+      offered.push({ token, image });
+    }
+  };
+  /** Shows what goes with the style on screen: a still figure has no animations to pick. */
+  const arrange = () => {
+    const still = view === 'art';
+    find('#sprite-animations').hidden = still;
+    find('#sprite-facings').hidden = still;
+    find('#sprite-save').textContent = still ? 'Baixar figura' : 'Baixar sprite sheet';
+    if (still && art) {
+      credit.replaceChildren('Ilustrações de ');
+      if (art.catalog.source) {
+        const link = document.createElement('a');
+        link.href = art.catalog.source;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = art.catalog.author || 'autor do acervo';
+        credit.append(link);
+      } else credit.append(art.catalog.author || 'autor do acervo');
+      credit.append(
+        offered.length > 0 ? ', usadas com autorização do autor.' : '. Nenhuma combina com este NPC.',
+      );
+    } else credit.innerHTML = sheetCredit;
+  };
+
   const fetchStrips = () => {
+    arrange();
+    if (view === 'art') return;
     const mine = showing;
     for (const [option, look] of looks.entries()) {
       const key = `${option}:${view}:${animation}`;
@@ -170,12 +257,22 @@ export function initSpriteView(
     for (const [option, thumb] of thumbs.entries()) {
       const ctx = thumb.canvas.getContext('2d')!;
       ground(ctx, thumb.canvas.width, thumb.canvas.height, 64);
+      if (view === 'art') {
+        const figure = offered[option]?.image;
+        if (figure?.complete && figure.width > 0) drawArt(ctx, figure, 48, 124, 88, 116);
+        continue;
+      }
       const strip = strips.get(`${option}:${view}:${animation}`);
       const y = view === 'top' ? 64 : 118;
       if (strip) drawSprite(ctx, strip, facing, frame, 48, y, OPTION_ZOOM, looks[option].scale, view);
     }
     const ctx = preview.getContext('2d')!;
     ground(ctx, preview.width, preview.height, 96);
+    if (view === 'art') {
+      const figure = offered[chosen]?.image;
+      if (figure?.complete && figure.width > 0) drawArt(ctx, figure, preview.width / 2, 336, 330, 316);
+      return;
+    }
     const strip = strips.get(`${chosen}:${view}:${animation}`);
     const y = view === 'top' ? preview.height / 2 : 322;
     if (strip) {
@@ -193,7 +290,26 @@ export function initSpriteView(
   };
   requestAnimationFrame(tick);
 
+  // The illustrated style is offered only where there is a collection to offer from.
+  const artButton = find('#sprite-views').lastElementChild as HTMLElement;
+  artButton.hidden = true;
+  void loadArt().then((found) => {
+    art = found;
+    artButton.hidden = found === null;
+    offer();
+  });
+
   find('#sprite-save').addEventListener('click', async () => {
+    if (view === 'art') {
+      // The figure as the artist drew it, on its transparent ground.
+      const figure = offered[chosen];
+      if (!figure) return;
+      const link = document.createElement('a');
+      link.href = figure.image.src;
+      link.download = `${fileName()}-${figure.token.name || 'figura'}.png`;
+      link.click();
+      return;
+    }
     const look = looks[chosen];
     if (!look) return;
     const sheet = document.createElement('canvas');
@@ -211,6 +327,9 @@ export function initSpriteView(
   return {
     show(subject, seed, option) {
       looks = spriteLooks(subject, seed);
+      subjectNow = subject;
+      seedNow = seed;
+      offer();
       chosen = option;
       showing += 1;
       strips.clear();

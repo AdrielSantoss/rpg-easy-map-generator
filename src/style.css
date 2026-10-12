@@ -190,6 +190,10 @@ body:not([data-screen='npc']) #npc-screen {
   color: var(--accent);
 }
 
+.sprite-row[hidden] {
+  display: none;
+}
+
 .sprite-row {
   display: flex;
   justify-content: center;
